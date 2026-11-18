@@ -2,10 +2,12 @@ import { AntDesign, Entypo, Ionicons, MaterialCommunityIcons, MaterialIcons } fr
 import { Tabs } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { Platform } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function AppTabs() {
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { accountType } = useAuth();
 
   return (
     <Tabs
@@ -30,8 +32,9 @@ export default function AppTabs() {
           fontWeight: '700',
           letterSpacing: 0.2,
         },
-      }}>
-      {/* 1. Home Tab (Information & How to Use Guide) */}
+      }}
+    >
+      {/* 1. Home Tab */}
       <Tabs.Screen
         name="index"
         options={{
@@ -42,7 +45,7 @@ export default function AppTabs() {
         }}
       />
 
-      {/* 2. Unified Image Defect QC (Box Packaging & Screen Glass) */}
+      {/* 2. Unified Image Defect QC */}
       <Tabs.Screen
         name="image-inspect"
         options={{
@@ -64,7 +67,7 @@ export default function AppTabs() {
         }}
       />
 
-      {/* 4. AI Claims Support (Kept intact) */}
+      {/* 4. AI Claims Support */}
       <Tabs.Screen
         name="support-beta"
         options={{
@@ -75,7 +78,7 @@ export default function AppTabs() {
         }}
       />
 
-      {/* 5. Settings (Kept intact) */}
+      {/* 5. Settings */}
       <Tabs.Screen
         name="settings"
         options={{
@@ -86,34 +89,22 @@ export default function AppTabs() {
         }}
       />
 
-      {/* Hidden Screens (Removed from Tab Bar) */}
-      <Tabs.Screen
-        name="guide"
-        options={{
-          href: null,
-        }}
-      />
+      {/* Hidden Screens: Legacy & Sub-flows */}
+      <Tabs.Screen name="guide" options={{ href: null }} />
+      <Tabs.Screen name="screen-scratch" options={{ href: null }} />
+      <Tabs.Screen name="live-stream" options={{ href: null }} />
+      <Tabs.Screen name="video-inspection" options={{ href: null }} />
 
-      <Tabs.Screen
-        name="screen-scratch"
-        options={{
-          href: null,
-        }}
-      />
-
-      <Tabs.Screen
-        name="live-stream"
-        options={{
-          href: null,
-        }}
-      />
-
-      <Tabs.Screen
-        name="video-inspection"
-        options={{
-          href: null,
-        }}
-      />
+      {/* Hidden Screens: Auth & ML & Company Routes */}
+      <Tabs.Screen name="auth/login" options={{ href: null }} />
+      <Tabs.Screen name="auth/register" options={{ href: null }} />
+      <Tabs.Screen name="predict" options={{ href: null }} />
+      <Tabs.Screen name="company/dashboard" options={{ href: null }} />
+      <Tabs.Screen name="company/shipments" options={{ href: null }} />
+      <Tabs.Screen name="company/new-shipment" options={{ href: null }} />
+      <Tabs.Screen name="company/shipment-detail" options={{ href: null }} />
+      <Tabs.Screen name="company/analytics" options={{ href: null }} />
+      <Tabs.Screen name="company/dispatch" options={{ href: null }} />
     </Tabs>
   );
 }

@@ -30,11 +30,13 @@ import {
 } from '@/utils/shipmentStorage';
 import { ShipmentTraceabilityModal } from '@/components/ShipmentTraceabilityModal';
 import { useColorScheme } from 'nativewind';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { colorScheme } = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { user, session, accountType, companyName } = useAuth();
 
   const [recentScans, setRecentScans] = useState<ScanRecord[]>([]);
   const [activeModelName, setActiveModelName] = useState('Standard');
@@ -83,6 +85,57 @@ export default function HomeScreen() {
           <ThemeToggle />
         </View>
 
+        {/* Role & Auth Status Banner */}
+        {session ? (
+          <Pressable
+            onPress={() => router.push(accountType === 'company' ? ('/company/dashboard' as any) : ('/predict' as any))}
+            className="mb-5 p-4 rounded-2xl bg-zinc-100 dark:bg-[#141418] border border-red-500/40 flex-row items-center justify-between active:opacity-85 shadow-sm"
+          >
+            <View className="flex-row items-center gap-3 flex-1 pr-2">
+              <View className="w-10 h-10 rounded-xl bg-red-500 items-center justify-center">
+                <ShieldCheck size={20} color="white" />
+              </View>
+              <View className="flex-1">
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-[11px] font-bold text-red-500 uppercase tracking-widest">
+                    {accountType === 'company' ? 'Company Enterprise' : 'Personal User'}
+                  </Text>
+                  <View className="w-2 h-2 rounded-full bg-emerald-500" />
+                </View>
+                <Text className="text-base font-bold text-black dark:text-white" numberOfLines={1}>
+                  {companyName || user?.email}
+                </Text>
+                <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  {accountType === 'company' ? 'Tap to view enterprise dashboard & shipments →' : 'Tap to run single-box ML prediction →'}
+                </Text>
+              </View>
+            </View>
+            <ArrowRight size={18} color="#FF2D55" />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => router.push('/auth/login' as any)}
+            className="mb-5 p-4 rounded-2xl bg-zinc-100 dark:bg-[#141418] border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-85 shadow-sm"
+          >
+            <View className="flex-row items-center gap-3 flex-1 pr-2">
+              <View className="w-10 h-10 rounded-xl bg-red-500/10 items-center justify-center">
+                <ShieldCheck size={20} color="#FF2D55" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-sm font-bold text-black dark:text-white">
+                  Sign In to Inspectify Platform
+                </Text>
+                <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  Unlock role-based multi-box shipments & ML risk models
+                </Text>
+              </View>
+            </View>
+            <View className="bg-red-500 px-3 py-1.5 rounded-xl">
+              <Text className="text-white text-xs font-bold">Sign In</Text>
+            </View>
+          </Pressable>
+        )}
+
         {/* Current Active Shipment Bar */}
         <View className="mb-5 p-4 rounded-2xl bg-zinc-100 dark:bg-[#141418] border border-zinc-200 dark:border-zinc-800">
           <View className="flex-row items-center justify-between mb-2">
@@ -129,7 +182,7 @@ export default function HomeScreen() {
                   Start Inspection
                 </Text>
                 <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  {isInspectionExpanded ? '4 inspection modes • Tap to collapse' : 'Tap to expand inspection options'}
+                  {isInspectionExpanded ? '5 inspection modes • Tap to collapse' : 'Tap to expand inspection options'}
                 </Text>
               </View>
             </View>
@@ -224,6 +277,27 @@ export default function HomeScreen() {
                     </Text>
                     <Text className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
                       Upload or record a video to inspect batches
+                    </Text>
+                  </View>
+                </View>
+                <ArrowRight size={18} color="#FF2D55" />
+              </Pressable>
+
+              {/* 5. AI Tabular ML Risk Evaluator Card */}
+              <Pressable
+                onPress={() => router.navigate('/predict' as any)}
+                className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80 shadow-sm"
+              >
+                <View className="flex-row items-center gap-3.5 flex-1 pr-2">
+                  <View className="w-11 h-11 rounded-xl bg-[#FF2D55]/10 dark:bg-[#FF2D55]/15 border border-[#FF2D55]/20 items-center justify-center">
+                    <Layers size={22} color="#FF2D55" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-base font-bold text-black dark:text-white">
+                      AI ML Risk Evaluator
+                    </Text>
+                    <Text className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
+                      CatBoost damage prediction on 24 logistics variables
                     </Text>
                   </View>
                 </View>

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
+import { supabase } from '@/services/supabaseClient';
 
 const SHIPMENTS_STORAGE_KEY = '@inspectify_shipments_v1';
 const ACTIVE_SHIPMENT_KEY = '@inspectify_active_shipment_id';
@@ -401,6 +402,49 @@ export async function offloadShipmentToCloud(
     }
 
     const target = list[idx];
+
+    // Attempt to backup images to Supabase Storage before releasing local cache
+    const uploadImageToSupabase = async (localUri?: string): Promise<string | undefined> => {
+      if (!localUri || (!localUri.startsWith('file://') && !localUri.startsWith(FileSystem.cacheDirectory || ''))) {
+        return localUri;
+      }
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(localUri);
+        if (!fileInfo.exists) return localUri;
+
+        const base64 = await FileSystem.readAsStringAsync(localUri, { encoding: 'base64' });
+        const binaryStr = atob(base64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+
+        const fileName = `shipments/${shipmentId}/${Date.now()}_${Math.random().toString(36).slice(2, 7)}.jpg`;
+        const { data, error } = await supabase.storage
+          .from('shipment-images')
+          .upload(fileName, bytes, { contentType: 'image/jpeg', upsert: true });
+
+        if (!error && data?.path) {
+          const { data: pubData } = supabase.storage.from('shipment-images').getPublicUrl(data.path);
+          return pubData.publicUrl;
+        }
+      } catch (err) {
+        console.warn('Supabase storage upload skipped/failed:', err);
+      }
+      return localUri;
+    };
+
+    // Upload box and screen images in parallel
+    const uploadedBoxImg = await uploadImageToSupabase(target.boxCondition?.imageUri);
+    for (const b of target.boxes) {
+      if (b.imageUri) b.imageUri = (await uploadImageToSupabase(b.imageUri)) || b.imageUri;
+      for (const sc of b.screens) {
+        if (sc.imageUri) sc.imageUri = (await uploadImageToSupabase(sc.imageUri)) || sc.imageUri;
+      }
+    }
+    for (const sc of target.screens) {
+      if (sc.imageUri) sc.imageUri = (await uploadImageToSupabase(sc.imageUri)) || sc.imageUri;
+    }
 
     // Clean up local filesystem cached image files if present
     const urisToPurge: (string | undefined)[] = [

@@ -53,11 +53,15 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
 
 type ActiveTab = 'preferences' | 'history';
 type HistoryFilter = 'all' | 'defective' | 'intact';
 
 export default function SettingsScreen() {
+  const router = useRouter();
+  const { user, session, accountType, companyName, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<ActiveTab>('preferences');
 
   // Profile State
@@ -301,6 +305,63 @@ export default function SettingsScreen() {
                 )}
 
                 <Text className="text-zinc-500 dark:text-zinc-400 text-xs mt-1 font-medium">{profileRole}</Text>
+              </View>
+
+              {/* Supabase Account & Role Section */}
+              <View className="pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                {session ? (
+                  <View>
+                    <View className="flex-row items-center justify-between mb-2">
+                      <Text className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Account Role</Text>
+                      <View className="bg-red-500/10 px-2.5 py-0.5 rounded-full border border-red-500/30">
+                        <Text className="text-[10px] font-bold text-red-500 uppercase tracking-widest">
+                          {accountType === 'company' ? 'Enterprise Company' : 'Personal User'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text className="text-sm font-bold text-black dark:text-white mb-0.5">{user?.email}</Text>
+                    {companyName && (
+                      <Text className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Company: {companyName}</Text>
+                    )}
+
+                    <View className="flex-row gap-2 mt-3">
+                      {accountType === 'company' && (
+                        <Pressable
+                          onPress={() => router.push('/company/dashboard' as any)}
+                          className="flex-1 bg-red-500 py-2.5 rounded-xl items-center"
+                        >
+                          <Text className="text-white font-bold text-xs">Company Portal</Text>
+                        </Pressable>
+                      )}
+                      <Pressable
+                        onPress={() => signOut().then(() => router.replace('/'))}
+                        className="flex-1 bg-zinc-100 dark:bg-zinc-800 py-2.5 rounded-xl items-center border border-zinc-200 dark:border-zinc-700"
+                      >
+                        <Text className="text-zinc-700 dark:text-zinc-300 font-bold text-xs">Sign Out</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <View className="items-center py-2">
+                    <Text className="text-xs text-zinc-500 dark:text-zinc-400 text-center mb-3">
+                      Sign in to sync multi-box shipments, track damage analytics, and run ML tabular predictions.
+                    </Text>
+                    <View className="flex-row gap-2 w-full">
+                      <Pressable
+                        onPress={() => router.push('/auth/login' as any)}
+                        className="flex-1 bg-red-500 py-2.5 rounded-xl items-center"
+                      >
+                        <Text className="text-white font-bold text-xs">Sign In</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => router.push('/auth/register' as any)}
+                        className="flex-1 bg-zinc-100 dark:bg-zinc-800 py-2.5 rounded-xl items-center border border-zinc-200 dark:border-zinc-700"
+                      >
+                        <Text className="text-zinc-700 dark:text-zinc-300 font-bold text-xs">Register</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
               </View>
             </View>
 

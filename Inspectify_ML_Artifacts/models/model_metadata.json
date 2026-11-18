@@ -1,0 +1,78 @@
+{
+    "project": "Inspectify",
+    "version": "1.0",
+    "dataset_size": 20000,
+    "geography": "Global",
+    "transport_modes": [
+        "Road",
+        "Rail",
+        "Air",
+        "Sea"
+    ],
+    "targets": {
+        "Box Damage": {
+            "algorithm": "CatBoost",
+            "synthetic_test_macro_f1": 0.6048807880697477
+        },
+        "Screen Damage": {
+            "algorithm": "CatBoost",
+            "synthetic_test_macro_f1": 0.6193283023648622
+        }
+    },
+    "features": [
+        "transport_mode",
+        "distance_km",
+        "distance_method",
+        "carrier",
+        "package_type",
+        "package_weight_kg",
+        "package_length_cm",
+        "package_width_cm",
+        "package_height_cm",
+        "packaging_material",
+        "cushioning_type",
+        "handling_conditions",
+        "fragile_handling",
+        "transit_hours",
+        "exposure_hours",
+        "handling_events",
+        "temperature_mean",
+        "temperature_max",
+        "temperature_min",
+        "humidity_mean",
+        "precipitation_mm",
+        "wind_speed_max",
+        "weather_data_available",
+        "weather_station_coverage"
+    ],
+    "categorical_features": [
+        "transport_mode",
+        "distance_method",
+        "carrier",
+        "package_type",
+        "packaging_material",
+        "cushioning_type",
+        "handling_conditions",
+        "fragile_handling"
+    ],
+    "numerical_features": [
+        "distance_km",
+        "package_weight_kg",
+        "package_length_cm",
+        "package_width_cm",
+        "package_height_cm",
+        "transit_hours",
+        "exposure_hours",
+        "handling_events",
+        "temperature_mean",
+        "temperature_max",
+        "temperature_min",
+        "humidity_mean",
+        "precipitation_mm",
+        "wind_speed_max",
+        "weather_data_available",
+        "weather_station_coverage"
+    ],
+    "label_origin": "Synthetic simulation",
+    "weather_source": "Open-Meteo Historical Archive"
+}
