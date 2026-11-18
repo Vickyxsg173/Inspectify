@@ -1,0 +1,15 @@
+/* src/app/glass.css – clean modern surface and glass styling */
+.glass {
+  @apply relative rounded-2xl overflow-hidden;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  .glass {
+    background: rgba(17, 17, 20, 0.9);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
