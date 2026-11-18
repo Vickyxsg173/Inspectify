@@ -8,7 +8,12 @@
     "scheme": "yolomobileapp",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Inspectify uses your location to fetch real-time weather and calculate shipping distances for damage risk prediction.",
+        "NSCameraUsageDescription": "Inspectify uses the camera to scan package condition for AI damage risk assessment.",
+        "NSPhotoLibraryUsageDescription": "Inspectify reads photos to analyze package condition for damage prediction."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +22,13 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "output": "static",

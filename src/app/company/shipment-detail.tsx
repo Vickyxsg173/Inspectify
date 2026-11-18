@@ -1,9 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  TextInput,
+  Image,
+  StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
 import { BACKEND_URL } from '@/constants/api';
 
 export default function ShipmentDetailScreen() {
@@ -13,11 +25,13 @@ export default function ShipmentDetailScreen() {
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [predicting, setPredicting] = useState(false);
-  const [showAddBox, setShowAddBox] = useState(false);
-  const [boxLabel, setBoxLabel] = useState('');
-  const [packageType, setPackageType] = useState('Box');
-  const [weightKg, setWeightKg] = useState('5.0');
-  const [addingBox, setAddingBox] = useState(false);
+
+  // Scanning Modal / Section state
+  const [showScanBox, setShowScanBox] = useState(false);
+  const [scannedImageUri, setScannedImageUri] = useState<string | null>(null);
+  const [scanBoxLabel, setScanBoxLabel] = useState('');
+  const [scanLoading, setScanLoading] = useState(false);
+  const [lastScannedResult, setLastScannedResult] = useState<any>(null);
 
   const fetchData = async () => {
     if (!session || !id) return;
@@ -26,7 +40,7 @@ export default function ShipmentDetailScreen() {
         fetch(`${BACKEND_URL}/company/shipments/${id}`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         }),
-        fetch(`${BACKEND_URL}/company/shipments/${id}/summary`, {
+        fetch(`${BACKEND_URL}/api/predictions/shipment/${id}/summary`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         }),
       ]);
@@ -43,260 +57,380 @@ export default function ShipmentDetailScreen() {
     fetchData();
   }, [session, id]);
 
-  const handleAddBox = async () => {
-    if (!boxLabel.trim()) {
-      Alert.alert('Required', 'Please enter a box label or barcode.');
+  const captureBoxImage = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Camera Permission', 'Please allow camera access to scan packaging.');
       return;
     }
-    setAddingBox(true);
-    try {
-      const res = await fetch(`${BACKEND_URL}/company/shipments/${id}/boxes`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({
-          box_label: boxLabel.trim(),
-          package_type: packageType,
-          package_weight_kg: parseFloat(weightKg) || 0,
-        }),
-      });
-      if (res.ok) {
-        setBoxLabel('');
-        setShowAddBox(false);
-        fetchData();
-      } else {
-        const err = await res.json();
-        Alert.alert('Error', err.detail || 'Could not add box.');
-      }
-    } catch (e: any) {
-      Alert.alert('Network Error', e.message);
-    } finally {
-      setAddingBox(false);
+    const res = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!res.canceled && res.assets && res.assets.length > 0) {
+      setScannedImageUri(res.assets[0].uri);
     }
   };
 
-  const runPredictAll = async () => {
-    setPredicting(true);
+  const uploadBoxImage = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+    if (!res.canceled && res.assets && res.assets.length > 0) {
+      setScannedImageUri(res.assets[0].uri);
+    }
+  };
+
+  const handleRunBoxScanAndPredict = async () => {
+    if (!scannedImageUri) {
+      Alert.alert('Missing Photo', 'Please take or choose a photo of the box packaging.');
+      return;
+    }
+
+    setScanLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/company/shipments/${id}/predict-all`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSummary(data);
-        Alert.alert('Evaluation Complete', `Shipment Status: ${data.shipment_status}`);
-        fetchData();
-      } else {
-        const err = await res.json();
-        Alert.alert('Evaluation Failed', err.detail || 'Could not evaluate shipment.');
+      // 1. Get Live GPS for Location Support
+      let pickupLat = 19.0760;
+      let pickupLon = 72.8777;
+      let dropLat = 28.6139;
+      let dropLon = 77.2090;
+
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const loc = await Location.getCurrentPositionAsync({});
+          pickupLat = loc.coords.latitude;
+          pickupLon = loc.coords.longitude;
+        }
+      } catch (locErr) {
+        console.warn('Location query error, using defaults:', locErr);
       }
+
+      // 2. Prepare Form Data
+      const formData = new FormData();
+      const filename = scannedImageUri.split('/').pop() || 'box.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+      formData.append('image', {
+        uri: scannedImageUri,
+        name: filename,
+        type,
+      } as any);
+
+      formData.append('shipment_id', id as string);
+      formData.append('box_label', scanBoxLabel.trim() || `Box-${(shipment?.shipment_boxes?.length || 0) + 1}`);
+      formData.append('pickup_lat', String(pickupLat));
+      formData.append('pickup_lon', String(pickupLon));
+      formData.append('drop_lat', String(dropLat));
+      formData.append('drop_lon', String(dropLon));
+      formData.append('carrier', shipment?.carrier || 'DHL');
+
+      const res = await fetch(`${BACKEND_URL}/api/predictions/scan-company-box`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Server status ${res.status}`);
+      }
+
+      const evalData = await res.json();
+      setLastScannedResult(evalData);
+      Alert.alert(
+        'Box Evaluated!',
+        `Box Status: ${evalData.box_condition}\nScreen Status: ${evalData.screen_condition}\nClassification: ${evalData.combined_classification}`
+      );
+      setScannedImageUri(null);
+      setScanBoxLabel('');
+      fetchData();
     } catch (e: any) {
-      Alert.alert('Network Error', e.message);
+      Alert.alert('Scan Evaluation Failed', e.message);
     } finally {
-      setPredicting(false);
+      setScanLoading(false);
     }
   };
 
   const getStatusColor = (status: string) => {
     if (!status) return '#A1A1AA';
-    if (status.includes('No Predicted')) return '#10B981';
-    if (status.includes('High')) return '#EF4444';
+    if (status.includes('No Predicted') || status.includes('Low')) return '#10B981';
+    if (status.includes('High') || status.includes('Damage Detected')) return '#EF4444';
     return '#F59E0B';
   };
 
   if (loading) {
     return (
-      <View className="flex-1 bg-zinc-950 items-center justify-center">
+      <View style={s.center}>
         <ActivityIndicator color="#FF2D55" size="large" />
       </View>
     );
   }
 
-  const currentSummary = summary?.summary || summary;
   const boxes = shipment?.shipment_boxes || [];
 
   return (
-    <SafeAreaView className="flex-1 bg-zinc-950">
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+    <SafeAreaView style={s.safe}>
+      <ScrollView contentContainerStyle={s.container}>
         {/* Header */}
-      <View className="flex-row items-center justify-between mb-4">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="flex-row items-center bg-zinc-900 px-3 py-1.5 rounded-full border border-zinc-800"
-        >
-          <Ionicons name="arrow-back" size={16} color="#A1A1AA" />
-          <Text className="text-zinc-400 text-xs ml-1 font-medium">Shipments</Text>
-        </TouchableOpacity>
-
-        <View className="bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">
-          <Text className="text-zinc-400 text-xs font-mono">{shipment?.id}</Text>
+        <View style={s.header}>
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+            <Ionicons name="arrow-back" size={16} color="#A1A1AA" />
+            <Text style={s.backText}>Shipments</Text>
+          </TouchableOpacity>
+          <View style={s.statusPill}>
+            <Text style={s.statusPillText}>{shipment?.status?.toUpperCase() || 'IN TRANSIT'}</Text>
+          </View>
         </View>
-      </View>
 
-      <Text className="text-2xl font-black text-white mb-1">
-        {shipment?.origin} → {shipment?.destination}
-      </Text>
-      <Text className="text-zinc-400 text-xs mb-6">
-        Carrier: <Text className="text-zinc-200 font-semibold">{shipment?.carrier || 'DHL'}</Text> · Transit: {shipment?.transport_mode || 'Road'}
-      </Text>
+        {/* Route Card */}
+        <View style={s.routeCard}>
+          <View style={s.routeRow}>
+            <View>
+              <Text style={s.routeLabel}>Origin</Text>
+              <Text style={s.routeCity}>{shipment?.origin || 'Depot A'}</Text>
+            </View>
+            <Ionicons name="arrow-forward" size={18} color="#FF2D55" />
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={s.routeLabel}>Destination</Text>
+              <Text style={s.routeCity}>{shipment?.destination || 'Depot B'}</Text>
+            </View>
+          </View>
+          <View style={s.carrierBadge}>
+            <Text style={s.carrierText}>
+              Carrier: {shipment?.carrier || 'DHL'} • Mode: {shipment?.transport_mode || 'Road'}
+            </Text>
+          </View>
+        </View>
 
-      {/* Aggregate Assessment Card */}
-      {currentSummary && (
-        <View className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 mb-6 shadow-xl">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Shipment Damage Status</Text>
-            <View
-              className="px-2.5 py-0.5 rounded-full"
-              style={{ backgroundColor: `${getStatusColor(currentSummary.shipment_status || shipment?.status)}20` }}
-            >
-              <Text
-                className="text-xs font-bold uppercase tracking-wider"
-                style={{ color: getStatusColor(currentSummary.shipment_status || shipment?.status) }}
+        {/* Shipment Multi-Box Summary Banner */}
+        {summary && summary.scanned_boxes > 0 && (
+          <View style={s.summaryCard}>
+            <View style={s.summaryHead}>
+              <Text style={s.summaryTitle}>Shipment Aggregate Risk</Text>
+              <View
+                style={[
+                  s.riskBadge,
+                  { backgroundColor: getStatusColor(summary.overall_risk_status) },
+                ]}
               >
-                {currentSummary.shipment_status || shipment?.status || 'draft'}
-              </Text>
+                <Text style={s.riskBadgeText}>{summary.overall_risk_status}</Text>
+              </View>
             </View>
-          </View>
 
-          {currentSummary.total_boxes !== undefined && (
-            <View className="mt-3 pt-3 border-t border-zinc-800">
-              <View className="flex-row justify-between mb-2">
-                <Text className="text-zinc-400 text-xs">Total Monitored Boxes</Text>
-                <Text className="text-white font-bold text-xs">{currentSummary.total_boxes}</Text>
+            <View style={s.statsRow}>
+              <View style={s.statBox}>
+                <Text style={s.statNum}>{summary.scanned_boxes} / {summary.total_boxes || summary.scanned_boxes}</Text>
+                <Text style={s.statLbl}>Boxes Scanned</Text>
               </View>
-              <View className="flex-row justify-between mb-2">
-                <Text className="text-zinc-400 text-xs">Damaged Count</Text>
-                <Text className="text-rose-400 font-bold text-xs">{currentSummary.damaged_count}</Text>
-              </View>
-              <View className="flex-row justify-between mb-2">
-                <Text className="text-zinc-400 text-xs">Intact Count</Text>
-                <Text className="text-emerald-400 font-bold text-xs">{currentSummary.intact_count}</Text>
-              </View>
-              <View className="flex-row justify-between mb-1">
-                <Text className="text-zinc-400 text-xs">P(At least 1 box damaged)</Text>
-                <Text className="text-amber-400 font-bold text-xs">
-                  {(currentSummary.p_any_damaged * 100).toFixed(1)}%
+              <View style={s.statBox}>
+                <Text style={[s.statNum, { color: summary.damaged_box_count > 0 ? '#EF4444' : '#10B981' }]}>
+                  {summary.damaged_box_count}
                 </Text>
+                <Text style={s.statLbl}>Damaged Boxes</Text>
               </View>
-              <Text className="text-zinc-600 text-[10px] italic">
-                * Based on independent binomial failure probability assumption across package units.
-              </Text>
+              <View style={s.statBox}>
+                <Text style={[s.statNum, { color: summary.damaged_screen_count > 0 ? '#EF4444' : '#10B981' }]}>
+                  {summary.damaged_screen_count}
+                </Text>
+                <Text style={s.statLbl}>Damaged Screen/Items</Text>
+              </View>
             </View>
-          )}
-        </View>
-      )}
 
-      {/* Package Boxes Section */}
-      <View className="flex-row items-center justify-between mb-3">
-        <Text className="text-base font-bold text-white">Packages in Shipment ({boxes.length})</Text>
-        <TouchableOpacity
-          className="bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-xl flex-row items-center"
-          onPress={() => setShowAddBox(!showAddBox)}
-        >
-          <Ionicons name={showAddBox ? 'close' : 'add'} size={14} color="#FF2D55" />
-          <Text className="text-white text-xs font-bold ml-1">{showAddBox ? 'Cancel' : 'Add Box'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Inline Add Box Form */}
-      {showAddBox && (
-        <View className="bg-zinc-900 border border-red-500/30 rounded-2xl p-4 mb-4">
-          <Text className="text-white font-bold text-sm mb-3">Add Box to Shipment</Text>
-          <TextInput
-            className="bg-zinc-950 border border-zinc-800 text-white rounded-xl px-4 py-2.5 text-xs mb-3"
-            placeholder="Box Label / Tracking ID (e.g. BOX-001)"
-            placeholderTextColor="#71717A"
-            value={boxLabel}
-            onChangeText={setBoxLabel}
-          />
-          <View className="flex-row gap-3 mb-3">
-            <TextInput
-              className="flex-1 bg-zinc-950 border border-zinc-800 text-white rounded-xl px-4 py-2.5 text-xs"
-              placeholder="Package Type (Box/Crate)"
-              placeholderTextColor="#71717A"
-              value={packageType}
-              onChangeText={setPackageType}
-            />
-            <TextInput
-              className="flex-1 bg-zinc-950 border border-zinc-800 text-white rounded-xl px-4 py-2.5 text-xs"
-              placeholder="Weight (kg)"
-              placeholderTextColor="#71717A"
-              value={weightKg}
-              onChangeText={setWeightKg}
-              keyboardType="numeric"
-            />
-          </View>
-          <TouchableOpacity
-            className="bg-red-500 py-3 rounded-xl items-center"
-            onPress={handleAddBox}
-            disabled={addingBox}
-          >
-            {addingBox ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text className="text-white font-bold text-xs">Save Box to Batch</Text>
+            {summary.box_damage_any_probability !== undefined && (
+              <Text style={s.summaryProbText}>
+                P(at least one box damaged): {(summary.box_damage_any_probability * 100).toFixed(1)}%
+              </Text>
             )}
+          </View>
+        )}
+
+        {/* Scan Box Section Button */}
+        <View style={s.sectionHeader}>
+          <Text style={s.sectionTitle}>Boxes In Batch ({boxes.length})</Text>
+          <TouchableOpacity
+            style={s.scanNewBtn}
+            onPress={() => setShowScanBox(!showScanBox)}
+          >
+            <Ionicons name={showScanBox ? 'close' : 'scan'} size={15} color="#FFFFFF" />
+            <Text style={s.scanNewBtnText}>{showScanBox ? 'Cancel' : 'Scan Box Packaging'}</Text>
           </TouchableOpacity>
         </View>
-      )}
 
-      {/* Box List */}
-      {boxes.length === 0 ? (
-        <View className="bg-zinc-900/50 border border-dashed border-zinc-800 rounded-2xl p-6 items-center my-2">
-          <Text className="text-zinc-500 text-xs">No boxes logged in this shipment yet.</Text>
-          <Text className="text-zinc-600 text-[11px] mt-0.5">Click "Add Box" above to add package units.</Text>
-        </View>
-      ) : (
-        <View className="gap-2.5">
-          {boxes.map((box: any) => (
-            <View key={box.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3.5">
-              <View className="flex-row justify-between items-center">
-                <Text className="text-white font-bold text-sm">
-                  {box.box_label || `Unit #${box.id.slice(0, 6)}`}
-                </Text>
-                {box.box_condition ? (
-                  <View
-                    className={`px-2 py-0.5 rounded-full ${
-                      box.box_condition === 'Damaged' ? 'bg-red-500/20' : 'bg-emerald-500/20'
-                    }`}
-                  >
-                    <Text
-                      className={`text-[10px] font-bold ${
-                        box.box_condition === 'Damaged' ? 'text-red-400' : 'text-emerald-400'
-                      }`}
-                    >
-                      Box: {box.box_condition}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text className="text-zinc-500 text-[10px] font-semibold uppercase">Pending Eval</Text>
-                )}
-              </View>
-              <Text className="text-zinc-500 text-xs mt-1">
-                {box.package_type || 'Standard'} · {box.package_weight_kg ? `${box.package_weight_kg} kg` : 'Weight unspec'}
-              </Text>
+        {/* Scanning Workflow Block */}
+        {showScanBox && (
+          <View style={s.scanBoxWrapper}>
+            <Text style={s.scanBoxHeading}>Scan Box Packaging (Condition & Risk)</Text>
+            <Text style={s.scanBoxSub}>
+              Snap the packaging. YOLO inspects tears & dents while Gemini LLM calculates route road shock. CatBoost then outputs damage risk for the box and screen.
+            </Text>
+
+            <TextInput
+              style={s.input}
+              placeholder="Box Label / Barcode (e.g. BOX-003)"
+              placeholderTextColor="#71717A"
+              value={scanBoxLabel}
+              onChangeText={setScanBoxLabel}
+            />
+
+            <View style={s.photoPickerRow}>
+              <TouchableOpacity style={s.photoBtn} onPress={captureBoxImage}>
+                <Ionicons name="camera" size={18} color="#FFFFFF" />
+                <Text style={s.photoBtnText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.photoBtn} onPress={uploadBoxImage}>
+                <Ionicons name="images" size={18} color="#FFFFFF" />
+                <Text style={s.photoBtnText}>Gallery</Text>
+              </TouchableOpacity>
             </View>
-          ))}
-        </View>
-      )}
 
-      {/* Run Aggregate Predictions Action */}
-      <TouchableOpacity
-        className="bg-red-500 active:bg-red-600 rounded-xl py-4 items-center mt-6 shadow-lg shadow-red-500/20"
-        onPress={runPredictAll}
-        disabled={predicting}
-      >
-        {predicting ? (
-          <ActivityIndicator color="white" />
-        ) : (
-          <Text className="text-white font-bold text-sm">Run Risk Assessment on All Boxes</Text>
+            {scannedImageUri && (
+              <View style={s.thumbnailWrap}>
+                <Image source={{ uri: scannedImageUri }} style={s.thumbnail} />
+                <Text style={s.thumbnailNote}>Packaging photo ready</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[s.evaluateBtn, scanLoading && { opacity: 0.6 }]}
+              onPress={handleRunBoxScanAndPredict}
+              disabled={scanLoading}
+            >
+              {scanLoading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={s.evaluateBtnText}>Analyze Box Packaging & Predict Risk</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         )}
-      </TouchableOpacity>
-    </ScrollView>
-  </SafeAreaView>
+
+        {/* Last Evaluated Box LLM Narrative */}
+        {lastScannedResult && (
+          <View style={s.narrativeCard}>
+            <View style={s.narrativeHead}>
+              <MaterialCommunityIcons name="road-variant" size={18} color="#FF2D55" />
+              <Text style={s.narrativeTitle}>Route & Road Condition Impact</Text>
+            </View>
+            <Text style={s.narrativeBody}>
+              {lastScannedResult.road_condition_assessment || 'Standard corridor transit assessed with baseline vibration.'}
+            </Text>
+            {lastScannedResult.weather_impact_assessment ? (
+              <Text style={[s.narrativeBody, { marginTop: 6, color: '#A1A1AA' }]}>
+                Weather Impact: {lastScannedResult.weather_impact_assessment}
+              </Text>
+            ) : null}
+          </View>
+        )}
+
+        {/* List of Boxes in Shipment */}
+        {boxes.length === 0 ? (
+          <View style={s.emptyBox}>
+            <Text style={s.emptyText}>No package units registered yet.</Text>
+            <Text style={s.emptySub}>Tap "Scan Box Packaging" above to scan and log units.</Text>
+          </View>
+        ) : (
+          <View style={s.boxList}>
+            {boxes.map((box: any) => (
+              <View key={box.id} style={s.boxCard}>
+                <View style={s.boxCardHead}>
+                  <Text style={s.boxTitle}>{box.box_label || `Box #${box.id.slice(0, 6)}`}</Text>
+                  {box.box_condition ? (
+                    <View
+                      style={[
+                        s.condBadge,
+                        { backgroundColor: box.box_condition === 'Damaged' ? '#EF4444' : '#10B981' },
+                      ]}
+                    >
+                      <Text style={s.condBadgeText}>
+                        Box: {box.box_condition}
+                      </Text>
+                    </View>
+                  ) : (
+                    <Text style={s.pendingBadge}>Evaluated via ML</Text>
+                  )}
+                </View>
+                <Text style={s.boxDesc}>
+                  Type: {box.package_type || 'Box'} • Weight: {box.weight_kg ? `${box.weight_kg} kg` : 'Estimated'}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#09090B' },
+  center: { flex: 1, backgroundColor: '#09090B', justifyContent: 'center', alignItems: 'center' },
+  container: { padding: 20, paddingBottom: 60 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#18181B',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#27272A',
+    gap: 4,
+  },
+  backText: { color: '#A1A1AA', fontSize: 13, fontWeight: '600' },
+  statusPill: { backgroundColor: '#18181B', borderWidth: 1, borderColor: '#27272A', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  statusPillText: { color: '#A1A1AA', fontSize: 11, fontWeight: '700' },
+  routeCard: { backgroundColor: '#18181B', borderWidth: 1, borderColor: '#27272A', borderRadius: 16, padding: 16, marginBottom: 16 },
+  routeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  routeLabel: { color: '#71717A', fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
+  routeCity: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  carrierBadge: { backgroundColor: '#09090B', padding: 8, borderRadius: 8, alignItems: 'center' },
+  carrierText: { color: '#A1A1AA', fontSize: 12, fontWeight: '600' },
+  summaryCard: { backgroundColor: '#18181B', borderWidth: 1, borderColor: '#27272A', borderRadius: 16, padding: 16, marginBottom: 20 },
+  summaryHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  summaryTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  riskBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  riskBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  statBox: { flex: 1, backgroundColor: '#09090B', padding: 10, borderRadius: 10, alignItems: 'center' },
+  statNum: { fontSize: 18, fontWeight: '900', color: '#FFFFFF', marginBottom: 2 },
+  statLbl: { fontSize: 10, color: '#71717A', fontWeight: '600', textAlign: 'center' },
+  summaryProbText: { color: '#A1A1AA', fontSize: 12, textAlign: 'center', marginTop: 4 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  scanNewBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FF2D55', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, gap: 6 },
+  scanNewBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  scanBoxWrapper: { backgroundColor: '#18181B', borderWidth: 1, borderColor: '#FF2D55', borderRadius: 16, padding: 16, marginBottom: 20 },
+  scanBoxHeading: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', marginBottom: 4 },
+  scanBoxSub: { color: '#A1A1AA', fontSize: 12, lineHeight: 16, marginBottom: 12 },
+  input: { backgroundColor: '#09090B', borderWidth: 1, borderColor: '#27272A', borderRadius: 12, padding: 12, color: '#FFFFFF', fontSize: 13, marginBottom: 12 },
+  photoPickerRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  photoBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#27272A', paddingVertical: 10, borderRadius: 10, gap: 6 },
+  photoBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
+  thumbnailWrap: { height: 140, borderRadius: 12, overflow: 'hidden', backgroundColor: '#09090B', marginBottom: 12, position: 'relative' },
+  thumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
+  thumbnailNote: { position: 'absolute', bottom: 6, right: 8, backgroundColor: 'rgba(0,0,0,0.6)', color: '#FFFFFF', fontSize: 10, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  evaluateBtn: { backgroundColor: '#FF2D55', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+  evaluateBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  narrativeCard: { backgroundColor: 'rgba(255, 45, 85, 0.05)', borderWidth: 1, borderColor: 'rgba(255, 45, 85, 0.2)', padding: 14, borderRadius: 14, marginBottom: 16 },
+  narrativeHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  narrativeTitle: { color: '#FF2D55', fontSize: 13, fontWeight: '700' },
+  narrativeBody: { color: '#D4D4D8', fontSize: 12, lineHeight: 17 },
+  emptyBox: { borderWidth: 1, borderStyle: 'dashed', borderColor: '#27272A', padding: 24, borderRadius: 16, alignItems: 'center', marginVertical: 12 },
+  emptyText: { color: '#71717A', fontSize: 13, fontWeight: '600' },
+  emptySub: { color: '#52525B', fontSize: 11, marginTop: 4 },
+  boxList: { gap: 8 },
+  boxCard: { backgroundColor: '#18181B', borderWidth: 1, borderColor: '#27272A', padding: 14, borderRadius: 12 },
+  boxCardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  boxTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  condBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  condBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  pendingBadge: { color: '#71717A', fontSize: 11, fontWeight: '600' },
+  boxDesc: { color: '#71717A', fontSize: 12 },
+});
