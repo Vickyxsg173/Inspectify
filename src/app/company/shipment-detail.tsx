@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -118,8 +119,9 @@ export default function ShipmentDetailScreen() {
   const boxes = shipment?.shipment_boxes || [];
 
   return (
-    <ScrollView className="flex-1 bg-zinc-950" contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
-      {/* Header */}
+    <SafeAreaView className="flex-1 bg-zinc-950">
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+        {/* Header */}
       <View className="flex-row items-center justify-between mb-4">
         <TouchableOpacity
           onPress={() => router.back()}
@@ -294,6 +296,7 @@ export default function ShipmentDetailScreen() {
         )}
       </TouchableOpacity>
     </ScrollView>
+  </SafeAreaView>
   );
 }
 

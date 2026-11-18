@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -62,11 +63,12 @@ export default function AnalyticsScreen() {
       : '0.0';
 
   return (
-    <ScrollView
-      className="flex-1 bg-zinc-950"
-      contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF2D55" />}
-    >
+    <SafeAreaView className="flex-1 bg-zinc-950">
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF2D55" />}
+      >
       {/* Header */}
       <View className="flex-row items-center justify-between mb-4">
         <TouchableOpacity
@@ -135,6 +137,7 @@ export default function AnalyticsScreen() {
         </View>
       )}
     </ScrollView>
+  </SafeAreaView>
   );
 }
 

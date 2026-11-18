@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +27,8 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-zinc-950" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <SafeAreaView className="flex-1 bg-zinc-950">
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View className="flex-1 justify-center px-6 py-12">
           {/* Back button */}
@@ -96,5 +98,6 @@ export default function LoginScreen() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  </SafeAreaView>
   );
 }

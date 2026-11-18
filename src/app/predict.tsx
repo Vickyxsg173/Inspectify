@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -115,14 +116,6 @@ export default function PredictScreen() {
   const setVal = (key: string) => (val: string) => setForm((prev) => ({ ...prev, [key]: val }));
 
   const handlePredict = async () => {
-    if (!session) {
-      Alert.alert('Sign In Required', 'Please sign in or create an account to run ML damage predictions.', [
-        { text: 'Sign In', onPress: () => router.push('/auth/login' as any) },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
-      return;
-    }
-
     setLoading(true);
     setResult(null);
 
@@ -154,12 +147,16 @@ export default function PredictScreen() {
         weather_station_coverage: form.weather_station_coverage,
       };
 
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
       const res = await fetch(`${BACKEND_URL}/api/predictions/single-box`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -179,8 +176,9 @@ export default function PredictScreen() {
   const getStatusColor = (condition: string) => (condition === 'Damaged' ? '#EF4444' : '#10B981');
 
   return (
-    <ScrollView className="flex-1 bg-zinc-950" contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
-      {/* Header */}
+    <SafeAreaView className="flex-1 bg-zinc-950">
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+        {/* Header */}
       <View className="flex-row items-center justify-between mb-4">
         <TouchableOpacity
           onPress={() => router.back()}
@@ -312,5 +310,6 @@ export default function PredictScreen() {
         )}
       </TouchableOpacity>
     </ScrollView>
+  </SafeAreaView>
   );
 }

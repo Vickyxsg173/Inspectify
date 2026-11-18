@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth, RegisterData } from '../../contexts/AuthContext';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -58,7 +59,8 @@ export default function RegisterScreen() {
 
   if (step === 1) {
     return (
-      <View className="flex-1 bg-zinc-950 justify-center px-6 py-12">
+      <SafeAreaView className="flex-1 bg-zinc-950">
+        <View className="flex-1 justify-center px-6 py-6">
         <TouchableOpacity
           onPress={() => router.back()}
           className="flex-row items-center mb-6 bg-zinc-900 self-start px-3 py-1.5 rounded-full border border-zinc-800"
@@ -134,11 +136,13 @@ export default function RegisterScreen() {
           </TouchableOpacity>
         </View>
       </View>
+    </SafeAreaView>
     );
   }
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-zinc-950" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <SafeAreaView className="flex-1 bg-zinc-950">
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View className="px-6 py-12">
           <TouchableOpacity
@@ -249,5 +253,6 @@ export default function RegisterScreen() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  </SafeAreaView>
   );
 }

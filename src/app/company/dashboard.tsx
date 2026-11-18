@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
@@ -39,8 +40,9 @@ export default function CompanyDashboard() {
   ];
 
   return (
-    <ScrollView className="flex-1 bg-zinc-950" contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
-      {/* Header */}
+    <SafeAreaView className="flex-1 bg-zinc-950">
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+        {/* Header */}
       <View className="flex-row items-center justify-between mb-6">
         <View>
           <View className="flex-row items-center gap-2 mb-1">
@@ -119,5 +121,6 @@ export default function CompanyDashboard() {
         </TouchableOpacity>
       </View>
     </ScrollView>
+  </SafeAreaView>
   );
 }

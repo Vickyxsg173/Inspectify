@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,8 +55,9 @@ export default function NewShipmentScreen() {
   };
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-zinc-950" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+    <SafeAreaView className="flex-1 bg-zinc-950">
+      <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <TouchableOpacity
           onPress={() => router.back()}
@@ -162,5 +164,6 @@ export default function NewShipmentScreen() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  </SafeAreaView>
   );
 }
