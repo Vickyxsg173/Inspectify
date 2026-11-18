@@ -29,7 +29,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-const BACKEND_URL = `http://${process.env.EXPO_PUBLIC_HOST_IP || '192.168.29.213'}:8000`;
+const HOST_IP = process.env.EXPO_PUBLIC_HOST_IP || '192.168.29.213';
+const BACKEND_URL = `http://${HOST_IP}:8000`;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
@@ -60,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (cachedCompId) setCompanyId(cachedCompId);
       }
     } catch (e) {
-      console.warn('Could not fetch profile:', e);
+      console.warn('Could not fetch profile from backend, using cache:', e);
       const cachedType = await AsyncStorage.getItem('inspectify_account_type');
       const cachedCompId = await AsyncStorage.getItem('inspectify_company_id');
       if (cachedType) setAccountType(cachedType as AccountType);
@@ -95,11 +96,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    const { error, data } = await supabase.auth.signInWithPassword({ email, password });
-    if (!error && data.session) {
-      await fetchProfile(data.session.access_token);
+    try {
+      const { error, data } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error && data.session) {
+        await fetchProfile(data.session.access_token);
+      }
+      return { error };
+    } catch (e: any) {
+      return { error: { message: e.message || 'Sign in failed' } };
     }
-    return { error };
   };
 
   const signOut = async () => {
@@ -121,11 +126,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const err = await res.json();
         return { error: { message: err.detail || 'Registration failed' } };
       }
-      // Now sign in
+      // Now sign in with Supabase directly
       const { error } = await signIn(registerData.email, registerData.password);
       return { error };
     } catch (e: any) {
-      return { error: { message: e.message || 'Network error' } };
+      return { error: { message: `Network error — make sure backend is running at ${BACKEND_URL}` } };
     }
   };
 
@@ -156,4 +161,3 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
-

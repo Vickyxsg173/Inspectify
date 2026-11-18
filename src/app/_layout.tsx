@@ -1,10 +1,11 @@
 import "./global.css";
 
+import { Stack } from 'expo-router';
+import { AuthProvider } from '../contexts/AuthContext';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
-import { AuthProvider } from '../contexts/AuthContext';
 
-export default function TabLayout() {
+export default function RootLayout() {
   return (
     <AuthProvider>
       <AnimatedSplashOverlay />
