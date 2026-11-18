@@ -40,66 +40,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch extended profile from backend (non-blocking, best-effort)
   const fetchProfile = async (token: string) => {
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000); // 4s timeout
       const res = await fetch(`${BACKEND_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (res.ok) {
         const profile = await res.json();
-        const accType = profile.account_type as AccountType;
-        setAccountType(accType);
+        setAccountType(profile.account_type as AccountType);
         setCompanyId(profile.company_id || null);
         setCompanyName(profile.company_name || null);
         await AsyncStorage.setItem('inspectify_account_type', profile.account_type || '');
         await AsyncStorage.setItem('inspectify_company_id', profile.company_id || '');
-      } else {
-        // Fallback to local storage if network is unreachable
-        const cachedType = await AsyncStorage.getItem('inspectify_account_type');
-        const cachedCompId = await AsyncStorage.getItem('inspectify_company_id');
-        if (cachedType) setAccountType(cachedType as AccountType);
-        if (cachedCompId) setCompanyId(cachedCompId);
+        return;
       }
-    } catch (e) {
-      console.warn('Could not fetch profile from backend, using cache:', e);
-      const cachedType = await AsyncStorage.getItem('inspectify_account_type');
-      const cachedCompId = await AsyncStorage.getItem('inspectify_company_id');
-      if (cachedType) setAccountType(cachedType as AccountType);
-      if (cachedCompId) setCompanyId(cachedCompId);
+    } catch (_) {
+      // Backend unreachable or timeout — use cache
     }
+    // Fallback to AsyncStorage cache
+    const cachedType = await AsyncStorage.getItem('inspectify_account_type');
+    const cachedCompId = await AsyncStorage.getItem('inspectify_company_id');
+    if (cachedType) setAccountType(cachedType as AccountType);
+    if (cachedCompId) setCompanyId(cachedCompId);
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.access_token) {
-        fetchProfile(session.access_token).finally(() => setIsLoading(false));
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      setSession(s);
+      setUser(s?.user ?? null);
+      if (s?.access_token) {
+        fetchProfile(s.access_token).finally(() => setIsLoading(false));
       } else {
         setIsLoading(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.access_token) {
-        await fetchProfile(session.access_token);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      setUser(s?.user ?? null);
+      if (s?.access_token) {
+        fetchProfile(s.access_token);
       } else {
         setAccountType(null);
         setCompanyId(null);
         setCompanyName(null);
+        AsyncStorage.multiRemove(['inspectify_account_type', 'inspectify_company_id']);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
+  // signIn: purely Supabase — no backend call, never blocks
   const signIn = async (email: string, password: string) => {
     try {
       const { error, data } = await supabase.auth.signInWithPassword({ email, password });
       if (!error && data.session) {
-        await fetchProfile(data.session.access_token);
+        // Fire profile fetch in background, don't await
+        fetchProfile(data.session.access_token);
       }
       return { error };
     } catch (e: any) {
@@ -115,23 +118,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.multiRemove(['inspectify_account_type', 'inspectify_company_id']);
   };
 
+  // signUp: calls backend to create user+company in DB, then signs in via Supabase
   const signUp = async (registerData: RegisterData) => {
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
       const res = await fetch(`${BACKEND_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(registerData),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (!res.ok) {
         const err = await res.json();
         return { error: { message: err.detail || 'Registration failed' } };
       }
-      // Now sign in with Supabase directly
-      const { error } = await signIn(registerData.email, registerData.password);
-      return { error };
     } catch (e: any) {
-      return { error: { message: `Network error — make sure backend is running at ${BACKEND_URL}` } };
+      if (e.name === 'AbortError') {
+        return { error: { message: `Backend not reachable at ${BACKEND_URL}. Start the backend server and try again.` } };
+      }
+      return { error: { message: `Network error: ${e.message}` } };
     }
+
+    // Backend registered user — now sign in via Supabase
+    const { error } = await signIn(registerData.email, registerData.password);
+    return { error };
   };
 
   const refreshProfile = async () => {
@@ -141,20 +153,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        accountType,
-        companyId,
-        companyName,
-        isLoading,
-        signIn,
-        signOut,
-        signUp,
-        refreshProfile,
-      }}
-    >
+    <AuthContext.Provider value={{
+      user, session, accountType, companyId, companyName, isLoading,
+      signIn, signOut, signUp, refreshProfile,
+    }}>
       {children}
     </AuthContext.Provider>
   );

@@ -5,12 +5,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../../services/supabaseClient';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function LoginScreen() {
-  const { fetchProfile } = useAuth() as any;
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,21 +20,12 @@ export default function LoginScreen() {
       return;
     }
     setLoading(true);
-    try {
-      // Sign in directly with Supabase — no backend required for auth
-      const { error, data } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-      if (error) {
-        Alert.alert('Login Failed', error.message || 'Invalid email or password.');
-      } else {
-        router.replace('/');
-      }
-    } catch (e: any) {
-      Alert.alert('Error', e.message || 'Sign in failed');
-    } finally {
-      setLoading(false);
+    const { error } = await signIn(email.trim(), password);
+    setLoading(false);
+    if (error) {
+      Alert.alert('Login Failed', error.message || 'Invalid email or password.');
+    } else {
+      router.replace('/');
     }
   };
 
@@ -44,7 +34,6 @@ export default function LoginScreen() {
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
           <View className="flex-1 justify-center px-6 py-12">
-            {/* Back button */}
             <TouchableOpacity
               onPress={() => router.back()}
               className="flex-row items-center mb-8 bg-zinc-900 self-start px-3 py-1.5 rounded-full border border-zinc-800"
