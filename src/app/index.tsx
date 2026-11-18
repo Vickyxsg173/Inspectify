@@ -285,7 +285,7 @@ export default function HomeScreen() {
 
               {/* 5. AI Tabular ML Risk Evaluator Card */}
               <Pressable
-                onPress={() => router.push({ pathname: '/predict' as any })}
+                onPress={() => router.push('/predict' as any)}
                 className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80 shadow-sm"
               >
                 <View className="flex-row items-center gap-3.5 flex-1 pr-2">
