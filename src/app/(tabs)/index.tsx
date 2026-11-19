@@ -9,16 +9,15 @@ import {
   Cctv,
   ArrowRight,
   ShieldCheck,
-  CheckCircle2,
-  AlertTriangle,
-  Lightbulb,
   Truck,
-  Plus,
   Layers,
-  Camera,
-  ChevronDown,
-  ChevronUp,
-  ScanLine,
+  Sparkles,
+  BarChart3,
+  CalendarCheck,
+  PlusCircle,
+  HelpCircle,
+  QrCode,
+  Scan,
 } from 'lucide-react-native';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { getRecentScans, ScanRecord, formatRelativeTime } from '@/utils/scanStorage';
@@ -43,7 +42,8 @@ export default function HomeScreen() {
   const [activeShipmentId, setActiveShipmentIdState] = useState('');
   const [shipmentCount, setShipmentCount] = useState(0);
   const [modalVisible, setModalVisible] = useState(false);
-  const [isInspectionExpanded, setIsInspectionExpanded] = useState(false);
+
+  const isCompany = accountType === 'company';
 
   useFocusEffect(
     useCallback(() => {
@@ -79,279 +79,262 @@ export default function HomeScreen() {
               Inspectify
             </Text>
             <Text className="text-zinc-600 dark:text-zinc-400 font-medium text-sm mt-1">
-              Smart quality check for boxes & screens
+              AI Logistics & Parcel Damage Platform
             </Text>
           </View>
           <ThemeToggle />
         </View>
 
-        {/* Role & Auth Status Banner */}
-        {session ? (
-          <Pressable
-            onPress={() => router.push(accountType === 'company' ? ('/company/dashboard' as any) : ('/predict' as any))}
-            className="mb-5 p-4 rounded-2xl bg-zinc-100 dark:bg-[#141418] border border-red-500/40 flex-row items-center justify-between active:opacity-85 shadow-sm"
-          >
-            <View className="flex-row items-center gap-3 flex-1 pr-2">
-              <View className="w-10 h-10 rounded-xl bg-red-500 items-center justify-center">
-                <ShieldCheck size={20} color="white" />
-              </View>
-              <View className="flex-1">
-                <View className="flex-row items-center gap-2">
-                  <Text className="text-[11px] font-bold text-red-500 uppercase tracking-widest">
-                    {accountType === 'company' ? 'Company Enterprise' : 'Personal User'}
-                  </Text>
-                  <View className="w-2 h-2 rounded-full bg-emerald-500" />
-                </View>
-                <Text className="text-base font-bold text-black dark:text-white" numberOfLines={1}>
-                  {companyName || user?.email}
-                </Text>
-                <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  {accountType === 'company' ? 'Tap to view enterprise dashboard & shipments →' : 'Tap to run single-box ML prediction →'}
-                </Text>
-              </View>
+        {/* Role & Account Banner */}
+        <View className="mb-5 p-4 rounded-2xl bg-zinc-100 dark:bg-[#141418] border border-red-500/30 flex-row items-center justify-between shadow-sm">
+          <View className="flex-row items-center gap-3 flex-1 pr-2">
+            <View className="w-10 h-10 rounded-xl bg-red-500 items-center justify-center">
+              <ShieldCheck size={20} color="white" />
             </View>
-            <ArrowRight size={18} color="#FF2D55" />
-          </Pressable>
-        ) : (
-          <Pressable
-            onPress={() => router.push('/auth/login' as any)}
-            className="mb-5 p-4 rounded-2xl bg-zinc-100 dark:bg-[#141418] border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-85 shadow-sm"
-          >
-            <View className="flex-row items-center gap-3 flex-1 pr-2">
-              <View className="w-10 h-10 rounded-xl bg-red-500/10 items-center justify-center">
-                <ShieldCheck size={20} color="#FF2D55" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-sm font-bold text-black dark:text-white">
-                  Sign In to Inspectify Platform
+            <View className="flex-1">
+              <View className="flex-row items-center gap-2">
+                <Text className="text-[11px] font-bold text-red-500 uppercase tracking-widest">
+                  {isCompany ? 'Enterprise Account' : 'Personal Recipient'}
                 </Text>
-                <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Unlock role-based multi-box shipments & ML risk models
-                </Text>
+                <View className="w-2 h-2 rounded-full bg-emerald-500" />
               </View>
+              <Text className="text-base font-bold text-black dark:text-white" numberOfLines={1}>
+                {companyName || user?.email}
+              </Text>
+              <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                {isCompany
+                  ? 'Access multi-box batches, route analytics & dispatch optimizer'
+                  : 'Zero-input parcel scanning & screen shock risk diagnosis'}
+              </Text>
             </View>
-            <View className="bg-red-500 px-3 py-1.5 rounded-xl">
-              <Text className="text-white text-xs font-bold">Sign In</Text>
-            </View>
-          </Pressable>
-        )}
-
-        {/* Current Active Shipment Bar */}
-        <View className="mb-5 p-4 rounded-2xl bg-zinc-100 dark:bg-[#141418] border border-zinc-200 dark:border-zinc-800">
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-row items-center gap-2.5 flex-1 pr-2">
-              <View className="w-8 h-8 rounded-lg bg-[#FF2D55]/10 items-center justify-center">
-                <Truck size={18} color="#FF2D55" />
-              </View>
-              <View className="flex-1">
-                <Text className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                  Current Batch
-                </Text>
-                <Text className="text-base font-bold text-black dark:text-white" numberOfLines={1}>
-                  {activeShipmentId || 'Loading...'}
-                </Text>
-              </View>
-            </View>
-
-            <Pressable
-              onPress={() => setModalVisible(true)}
-              className="bg-white dark:bg-[#202026] px-3.5 py-2 rounded-xl border border-zinc-300 dark:border-zinc-700 active:opacity-80"
-            >
-              <Text className="text-xs font-bold text-[#FF2D55]">Change</Text>
-            </Pressable>
           </View>
-
-          <Text className="text-xs text-zinc-500 dark:text-zinc-400">
-            {shipmentCount > 0 ? `${shipmentCount} batch(es) saved on device` : 'No batches saved yet'}
-          </Text>
-        </View>
-
-        {/* Expandable Start Inspection Menu */}
-        <View className="mb-6">
-          <Pressable
-            onPress={() => setIsInspectionExpanded((prev) => !prev)}
-            className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between mb-3 active:opacity-85 shadow-sm"
-          >
-            <View className="flex-row items-center gap-3">
-              {/* Distinct Parent Master Icon (Solid Red with White ScanLine) */}
-              <View className="w-11 h-11 rounded-xl bg-[#FF2D55] items-center justify-center shadow-sm">
-                <ScanLine size={22} color="#FFFFFF" />
-              </View>
-              <View>
-                <Text className="text-lg font-bold text-black dark:text-white">
-                  Start Inspection
-                </Text>
-                <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  {isInspectionExpanded ? '5 inspection modes • Tap to collapse' : 'Tap to expand inspection options'}
-                </Text>
-              </View>
-            </View>
-
-            {/* High-Contrast Explicit Up/Down Toggle Button */}
-            <View className="w-9 h-9 rounded-full bg-zinc-200/80 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 items-center justify-center">
-              {isInspectionExpanded ? (
-                <ChevronUp size={20} color={isDark ? '#FFFFFF' : '#18181B'} />
-              ) : (
-                <ChevronDown size={20} color={isDark ? '#FFFFFF' : '#18181B'} />
-              )}
-            </View>
-          </Pressable>
-
-          {isInspectionExpanded && (
-            <View className="gap-3">
-              {/* 1. Box Packaging Card */}
-              <Pressable
-                onPress={() => router.push({ pathname: '/image-inspect' as any, params: { mode: 'package' } })}
-                className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80 shadow-sm"
-              >
-                <View className="flex-row items-center gap-3.5 flex-1 pr-2">
-                  <View className="w-11 h-11 rounded-xl bg-[#FF2D55]/10 dark:bg-[#FF2D55]/15 border border-[#FF2D55]/20 items-center justify-center">
-                    <Package size={22} color="#FF2D55" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-base font-bold text-black dark:text-white">
-                      Box Packaging
-                    </Text>
-                    <Text className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      Check boxes for dents, tears, and crushed corners
-                    </Text>
-                  </View>
-                </View>
-                <ArrowRight size={18} color="#FF2D55" />
-              </Pressable>
-
-              {/* 2. Screen Glass Card */}
-              <Pressable
-                onPress={() => router.push({ pathname: '/image-inspect' as any, params: { mode: 'screen' } })}
-                className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80 shadow-sm"
-              >
-                <View className="flex-row items-center gap-3.5 flex-1 pr-2">
-                  <View className="w-11 h-11 rounded-xl bg-[#FF2D55]/10 dark:bg-[#FF2D55]/15 border border-[#FF2D55]/20 items-center justify-center">
-                    <Smartphone size={22} color="#FF2D55" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-base font-bold text-black dark:text-white">
-                      Screen Glass
-                    </Text>
-                    <Text className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      Scan mobile displays for cracks and scratches
-                    </Text>
-                  </View>
-                </View>
-                <ArrowRight size={18} color="#FF2D55" />
-              </Pressable>
-
-              {/* 3. Live Camera Card */}
-              <Pressable
-                onPress={() => router.push({ pathname: '/live-video' as any, params: { mode: 'live' } })}
-                className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80 shadow-sm"
-              >
-                <View className="flex-row items-center gap-3.5 flex-1 pr-2">
-                  <View className="w-11 h-11 rounded-xl bg-[#FF2D55]/10 dark:bg-[#FF2D55]/15 border border-[#FF2D55]/20 items-center justify-center">
-                    <Cctv size={22} color="#FF2D55" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-base font-bold text-black dark:text-white">
-                      Live Camera
-                    </Text>
-                    <Text className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      Point camera to detect damage in real time
-                    </Text>
-                  </View>
-                </View>
-                <ArrowRight size={18} color="#FF2D55" />
-              </Pressable>
-
-              {/* 4. Video Inspection Card */}
-              <Pressable
-                onPress={() => router.push({ pathname: '/live-video' as any, params: { mode: 'video' } })}
-                className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80 shadow-sm"
-              >
-                <View className="flex-row items-center gap-3.5 flex-1 pr-2">
-                  <View className="w-11 h-11 rounded-xl bg-[#FF2D55]/10 dark:bg-[#FF2D55]/15 border border-[#FF2D55]/20 items-center justify-center">
-                    <Video size={22} color="#FF2D55" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-base font-bold text-black dark:text-white">
-                      Video Inspection
-                    </Text>
-                    <Text className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      Upload or record a video to inspect batches
-                    </Text>
-                  </View>
-                </View>
-                <ArrowRight size={18} color="#FF2D55" />
-              </Pressable>
-
-              {/* 5. AI Tabular ML Risk Evaluator Card */}
-              <Pressable
-                onPress={() => router.push('/predict' as any)}
-                className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80 shadow-sm"
-              >
-                <View className="flex-row items-center gap-3.5 flex-1 pr-2">
-                  <View className="w-11 h-11 rounded-xl bg-[#FF2D55]/10 dark:bg-[#FF2D55]/15 border border-[#FF2D55]/20 items-center justify-center">
-                    <Layers size={22} color="#FF2D55" />
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-base font-bold text-black dark:text-white">
-                      AI ML Risk Evaluator
-                    </Text>
-                    <Text className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      CatBoost damage prediction on 24 logistics variables
-                    </Text>
-                  </View>
-                </View>
-                <ArrowRight size={18} color="#FF2D55" />
-              </Pressable>
-            </View>
+          {isCompany && (
+            <Pressable
+              onPress={() => router.push('/company/dashboard' as any)}
+              className="bg-red-500 px-3 py-1.5 rounded-xl flex-row items-center gap-1 active:opacity-85"
+            >
+              <Text className="text-white text-xs font-bold">Portal</Text>
+              <ArrowRight size={14} color="white" />
+            </Pressable>
           )}
         </View>
 
-        {/* Simple How It Works Guide */}
+        {/* ========================================================================= */}
+        {/* COMPANY ONLY SECTION: Active Batches, Route Analytics & Dispatch Tools    */}
+        {/* ========================================================================= */}
+        {isCompany && (
+          <View className="mb-6">
+            <Text className="text-xs font-bold uppercase tracking-wider text-red-500 mb-3">
+              Enterprise Logistics Suite
+            </Text>
+
+            {/* Current Active Shipment Quickbar */}
+            <View className="mb-3.5 p-4 rounded-2xl bg-zinc-50 dark:bg-[#121216] border border-zinc-200 dark:border-zinc-800">
+              <View className="flex-row items-center justify-between mb-1.5">
+                <View className="flex-row items-center gap-2.5 flex-1 pr-2">
+                  <View className="w-8 h-8 rounded-lg bg-[#FF2D55]/10 items-center justify-center">
+                    <Truck size={17} color="#FF2D55" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[11px] font-semibold text-zinc-500 dark:text-zinc-400">
+                      Active Shipment Batch
+                    </Text>
+                    <Text className="text-sm font-bold text-black dark:text-white" numberOfLines={1}>
+                      {activeShipmentId || 'No active batch selected'}
+                    </Text>
+                  </View>
+                </View>
+
+                <Pressable
+                  onPress={() => setModalVisible(true)}
+                  className="bg-white dark:bg-[#202026] px-3 py-1.5 rounded-xl border border-zinc-300 dark:border-zinc-700 active:opacity-80"
+                >
+                  <Text className="text-xs font-bold text-[#FF2D55]">Change</Text>
+                </Pressable>
+              </View>
+              <Text className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                {shipmentCount > 0 ? `${shipmentCount} total batch(es) registered` : 'Create a batch in Company Portal to start multi-box scanning'}
+              </Text>
+            </View>
+
+            {/* Company Direct Navigation Cards */}
+            <View className="flex-row gap-2.5 mb-2.5">
+              {/* Shipment Analytics with Real GPS + Live Open-Meteo */}
+              <Pressable
+                onPress={() => router.push('/company/analytics' as any)}
+                className="flex-1 bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 active:opacity-80"
+              >
+                <View className="w-10 h-10 rounded-xl bg-blue-500/10 items-center justify-center mb-2.5">
+                  <BarChart3 size={20} color="#3B82F6" />
+                </View>
+                <Text className="text-sm font-bold text-black dark:text-white">Route Analytics</Text>
+                <Text className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  Live GPS distance & weather corridor CatBoost simulation
+                </Text>
+              </Pressable>
+
+              {/* Dispatch Window Optimizer */}
+              <Pressable
+                onPress={() => router.push('/company/dispatch' as any)}
+                className="flex-1 bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 active:opacity-80"
+              >
+                <View className="w-10 h-10 rounded-xl bg-amber-500/10 items-center justify-center mb-2.5">
+                  <CalendarCheck size={20} color="#F59E0B" />
+                </View>
+                <Text className="text-sm font-bold text-black dark:text-white">Dispatch Optimizer</Text>
+                <Text className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  Forecast multi-day weather to pick lowest risk dates
+                </Text>
+              </Pressable>
+            </View>
+
+            {/* Manage Shipments Full Button */}
+            <Pressable
+              onPress={() => router.push('/company/shipments' as any)}
+              className="bg-zinc-50 dark:bg-[#121216] p-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80"
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="w-8 h-8 rounded-lg bg-emerald-500/10 items-center justify-center">
+                  <PlusCircle size={18} color="#10B981" />
+                </View>
+                <View>
+                  <Text className="text-xs font-bold text-black dark:text-white">Shipment Management</Text>
+                  <Text className="text-[10px] text-zinc-500 dark:text-zinc-400">View batches, scan package boxes, compute binomial failure probability</Text>
+                </View>
+              </View>
+              <ArrowRight size={16} color="#71717A" />
+            </Pressable>
+          </View>
+        )}
+
+        {/* ========================================================================= */}
+        {/* DIRECT SHORTCUTS: Features that do not have dedicated bottom tabs         */}
+        {/* ========================================================================= */}
         <View className="mb-6">
-          <Text className="text-xl font-bold text-black dark:text-white mb-3">
-            How It Works
+          <Text className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
+            Quick Action Tools
           </Text>
 
           <View className="gap-2.5">
+            {/* 1. AI ML Risk Evaluator (Direct to /predict) */}
+            <Pressable
+              onPress={() => router.push('/predict' as any)}
+              className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-red-500/25 flex-row items-center justify-between active:opacity-80 shadow-sm"
+            >
+              <View className="flex-row items-center gap-3.5 flex-1 pr-2">
+                <View className="w-11 h-11 rounded-xl bg-red-500/15 border border-red-500/30 items-center justify-center">
+                  <Layers size={22} color="#FF2D55" />
+                </View>
+                <View className="flex-1">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-base font-bold text-black dark:text-white">
+                      Instant Parcel Risk Evaluator
+                    </Text>
+                    <View className="bg-red-500/15 px-2 py-0.5 rounded-full">
+                      <Text className="text-[10px] font-bold text-red-500">NO FORM NEEDED</Text>
+                    </View>
+                  </View>
+                  <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    Snap a photo of any received box — YOLO + Gemini + CatBoost predict if internal screen is damaged
+                  </Text>
+                </View>
+              </View>
+              <ArrowRight size={18} color="#FF2D55" />
+            </Pressable>
+
+            {/* 2. Micro-Scratch Screen Inspector (Direct to /screen-scratch) */}
+            <Pressable
+              onPress={() => router.push('/screen-scratch' as any)}
+              className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80 shadow-sm"
+            >
+              <View className="flex-row items-center gap-3.5 flex-1 pr-2">
+                <View className="w-11 h-11 rounded-xl bg-purple-500/10 border border-purple-500/20 items-center justify-center">
+                  <Smartphone size={22} color="#A855F7" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-base font-bold text-black dark:text-white">
+                    Screen Micro-Scratch Scanner
+                  </Text>
+                  <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                    Dedicated hairline crack & glass fracture inspection using CLAHE edge detection
+                  </Text>
+                </View>
+              </View>
+              <ArrowRight size={18} color="#71717A" />
+            </Pressable>
+
+            {/* 3. Comprehensive Documentation & QC Guide (Direct to /guide) */}
+            <Pressable
+              onPress={() => router.push('/guide' as any)}
+              className="bg-zinc-50 dark:bg-[#121216] p-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80"
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="w-9 h-9 rounded-xl bg-zinc-200 dark:bg-zinc-800 items-center justify-center">
+                  <HelpCircle size={18} color={isDark ? '#E4E4E7' : '#27272A'} />
+                </View>
+                <View>
+                  <Text className="text-xs font-bold text-black dark:text-white">How Inspectify Works</Text>
+                  <Text className="text-[10px] text-zinc-500 dark:text-zinc-400">Step-by-step documentation for lighting, threshold tuning, and defect classes</Text>
+                </View>
+              </View>
+              <ArrowRight size={16} color="#71717A" />
+            </Pressable>
+          </View>
+        </View>
+
+        {/* ========================================================================= */}
+        {/* HOW THE SYSTEM WORKS (EXPLANATION IN HOME SCREEN)                         */}
+        {/* ========================================================================= */}
+        <View className="mb-6">
+          <Text className="text-xl font-bold text-black dark:text-white mb-1">
+            How Inspectify Works
+          </Text>
+          <Text className="text-xs text-zinc-500 dark:text-zinc-400 mb-3.5">
+            A three-tier artificial intelligence pipeline powering every diagnosis
+          </Text>
+
+          <View className="gap-2.5">
+            {/* Step 1 */}
             <View className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center gap-3.5">
               <View className="w-8 h-8 rounded-full bg-[#FF2D55] items-center justify-center">
                 <Text className="text-white text-sm font-bold">1</Text>
               </View>
               <View className="flex-1">
                 <Text className="text-sm font-bold text-black dark:text-white">
-                  Take or upload a photo
+                  Computer Vision (YOLOv8 & OpenCV)
                 </Text>
                 <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Hold camera 15-30cm away with good lighting
+                  Instantly flags packaging tears, crushed box corners, punctures, and screen micro-scratches.
                 </Text>
               </View>
             </View>
 
+            {/* Step 2 */}
             <View className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center gap-3.5">
               <View className="w-8 h-8 rounded-full bg-[#FF2D55] items-center justify-center">
                 <Text className="text-white text-sm font-bold">2</Text>
               </View>
               <View className="flex-1">
                 <Text className="text-sm font-bold text-black dark:text-white">
-                  Get instant diagnosis
+                  Context & Transit Intelligence (Gemini + Live APIs)
                 </Text>
                 <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Damage is highlighted in red with an instant pass or fail verdict
+                  Pulls real-world GPS corridor distance, live weather (Open-Meteo), and evaluates road shock absorption.
                 </Text>
               </View>
             </View>
 
+            {/* Step 3 */}
             <View className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center gap-3.5">
               <View className="w-8 h-8 rounded-full bg-[#FF2D55] items-center justify-center">
                 <Text className="text-white text-sm font-bold">3</Text>
               </View>
               <View className="flex-1">
                 <Text className="text-sm font-bold text-black dark:text-white">
-                  File claims or save record
+                  CatBoost Predictive Machine Learning
                 </Text>
                 <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Draft support emails automatically in the AI Support tab
+                  Computes exact damage risk probability for the outer box and whether internal screen glass is intact.
                 </Text>
               </View>
             </View>
