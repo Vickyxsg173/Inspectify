@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BACKEND_URL } from '../constants/api';
 
 export type AccountType = 'personal' | 'company' | null;
 
@@ -29,9 +30,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-const HOST_IP = process.env.EXPO_PUBLIC_HOST_IP || '192.168.29.213';
-const BACKEND_URL = `http://${HOST_IP}:8000`;
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [session, setSession] = useState<any>(null);
@@ -44,7 +42,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchProfile = async (token: string) => {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000); // 4s timeout
+      const timeout = setTimeout(() => controller.abort(), 3500);
       const res = await fetch(`${BACKEND_URL}/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
@@ -96,12 +94,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // signIn: purely Supabase — no backend call, never blocks
+  // signIn: purely Supabase — no backend dependency, immediate resolution
   const signIn = async (email: string, password: string) => {
     try {
       const { error, data } = await supabase.auth.signInWithPassword({ email, password });
       if (!error && data.session) {
-        // Fire profile fetch in background, don't await
         fetchProfile(data.session.access_token);
       }
       return { error };
@@ -111,7 +108,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('Supabase signOut error:', err);
+    }
+    setSession(null);
+    setUser(null);
     setAccountType(null);
     setCompanyId(null);
     setCompanyName(null);
@@ -136,12 +139,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (e: any) {
       if (e.name === 'AbortError') {
-        return { error: { message: `Backend not reachable at ${BACKEND_URL}. Start the backend server and try again.` } };
+        return { error: { message: `Backend not reachable at ${BACKEND_URL}. Check your server and connection.` } };
       }
       return { error: { message: `Network error: ${e.message}` } };
     }
 
-    // Backend registered user — now sign in via Supabase
     const { error } = await signIn(registerData.email, registerData.password);
     return { error };
   };
