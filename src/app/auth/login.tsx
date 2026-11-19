@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function LoginScreen() {
-  const { signIn } = useAuth();
+  const { signIn, refreshProfile } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,7 +25,8 @@ export default function LoginScreen() {
     if (error) {
       Alert.alert('Login Failed', error.message || 'Invalid email or password.');
     } else {
-      router.replace('/');
+      await refreshProfile();
+      router.replace('/(tabs)');
     }
   };
 
@@ -34,21 +35,13 @@ export default function LoginScreen() {
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
           <View className="flex-1 justify-center px-6 py-12">
-            <TouchableOpacity
-              onPress={() => router.back()}
-              className="flex-row items-center mb-8 bg-zinc-900 self-start px-3 py-1.5 rounded-full border border-zinc-800"
-            >
-              <Ionicons name="arrow-back" size={18} color="#A1A1AA" />
-              <Text className="text-zinc-400 text-sm ml-1 font-medium">Back</Text>
-            </TouchableOpacity>
-
             <View className="mb-8">
               <View className="flex-row items-center gap-2 mb-2">
                 <View className="w-3 h-3 rounded-full bg-red-500" />
                 <Text className="text-red-500 font-bold uppercase tracking-widest text-xs">Inspectify Platform</Text>
               </View>
               <Text className="text-3xl font-extrabold text-white mb-2">Welcome Back</Text>
-              <Text className="text-zinc-400 text-sm">Sign in to access AI logistics predictions and damage tracking.</Text>
+              <Text className="text-zinc-400 text-sm">Sign in to your personal or enterprise account to access AI inspection tools.</Text>
             </View>
 
             <View className="gap-4">

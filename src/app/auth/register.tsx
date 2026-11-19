@@ -7,11 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabaseClient';
-
-const HOST_IP = process.env.EXPO_PUBLIC_HOST_IP || '192.168.29.213';
-const BACKEND_URL = `http://${HOST_IP}:8000`;
+import { BACKEND_URL } from '@/constants/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function RegisterScreen() {
+  const { refreshProfile } = useAuth();
   const [step, setStep] = useState<1 | 2>(1);
   const [accountType, setAccountType] = useState<'personal' | 'company'>('personal');
   const [fullName, setFullName] = useState('');
@@ -37,8 +37,11 @@ export default function RegisterScreen() {
     }
 
     setLoading(true);
+    let registeredViaBackend = false;
     try {
-      // Try backend registration first (creates user + company + DB profile)
+      // 1. Try backend registration endpoint (creates user in Supabase Auth + records in public.users & companies)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
       const res = await fetch(`${BACKEND_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -51,65 +54,80 @@ export default function RegisterScreen() {
           contact_person: contactPerson.trim() || fullName.trim(),
           phone: phone.trim() || undefined,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
 
-      if (!res.ok) {
-        const err = await res.json();
-        setLoading(false);
-        Alert.alert('Registration Failed', err.detail || 'Could not create account.');
-        return;
+      if (res.ok) {
+        registeredViaBackend = true;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        if (err.detail && typeof err.detail === 'string' && err.detail.includes('already registered')) {
+          setLoading(false);
+          Alert.alert('Account Exists', 'This email is already registered. Please sign in.', [
+            { text: 'Go to Sign In', onPress: () => router.replace('/auth/login' as any) },
+          ]);
+          return;
+        }
       }
     } catch (networkErr) {
-      // Backend unreachable — fallback: create directly in Supabase Auth
-      // (profile will be created when backend is running)
-      console.warn('Backend unreachable, falling back to Supabase direct signup');
+      console.warn('Backend unavailable, attempting direct Supabase auth:', networkErr);
     }
 
-    // Sign in with Supabase (works even if backend is down)
-    const { error } = await supabase.auth.signInWithPassword({
+    // 2. If backend was unreachable or signup needed direct fallback
+    if (!registeredViaBackend) {
+      const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            account_type: accountType,
+            company_name: companyName.trim() || undefined,
+          },
+        },
+      });
+
+      if (signUpErr) {
+        setLoading(false);
+        Alert.alert('Registration Failed', signUpErr.message);
+        return;
+      }
+    }
+
+    // 3. Immediately sign in with the new credentials to establish session
+    const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
 
     setLoading(false);
 
-    if (error) {
-      // Backend may have created the user; try sign-up fallback
-      const { error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: { data: { full_name: fullName.trim() } },
-      });
-      if (signUpError) {
-        Alert.alert('Registration Failed', signUpError.message || 'Could not create account.');
-        return;
-      }
-      Alert.alert('Account Created', 'Check your email to confirm your account, then sign in.', [
-        { text: 'Go to Sign In', onPress: () => router.replace('/auth/login' as any) },
-      ]);
+    if (signInErr) {
+      Alert.alert(
+        'Account Created',
+        'Your account has been registered. Please sign in with your email and password.',
+        [{ text: 'Sign In', onPress: () => router.replace('/auth/login' as any) }]
+      );
       return;
     }
 
-    Alert.alert('Welcome to Inspectify!', 'Your account has been created successfully.', [
-      { text: 'Get Started', onPress: () => router.replace('/') },
-    ]);
+    // Session is active! Refresh profile and route to main screen
+    await refreshProfile();
+    router.replace('/(tabs)');
   };
 
   if (step === 1) {
     return (
       <SafeAreaView className="flex-1 bg-zinc-950">
         <View className="flex-1 justify-center px-6 py-6">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="flex-row items-center mb-6 bg-zinc-900 self-start px-3 py-1.5 rounded-full border border-zinc-800"
-          >
-            <Ionicons name="arrow-back" size={18} color="#A1A1AA" />
-            <Text className="text-zinc-400 text-sm ml-1 font-medium">Back</Text>
-          </TouchableOpacity>
-
           <View className="mb-8">
+            <View className="flex-row items-center gap-2 mb-2">
+              <View className="w-3 h-3 rounded-full bg-red-500" />
+              <Text className="text-red-500 font-bold uppercase tracking-widest text-xs">Inspectify Access</Text>
+            </View>
             <Text className="text-3xl font-extrabold text-white mb-2">Create Account</Text>
-            <Text className="text-zinc-400 text-sm">Select the account type that matches your workflow.</Text>
+            <Text className="text-zinc-400 text-sm">Select the account type that matches your workflow to enter.</Text>
           </View>
 
           {/* Option 1: Personal User */}
@@ -126,11 +144,11 @@ export default function RegisterScreen() {
               </View>
               <View>
                 <Text className="text-white text-lg font-bold">Personal User</Text>
-                <Text className="text-zinc-400 text-xs">Standard QC & Single-Box ML Inspection</Text>
+                <Text className="text-zinc-400 text-xs">Instant QC & Single Package Inspection</Text>
               </View>
             </View>
             <Text className="text-zinc-400 text-xs leading-relaxed mt-1">
-              Access computer vision defect detection, micro-scratch scanning, and single package ML damage predictions.
+              Access packaging damage scanning, micro-scratch screen inspection, and instant damage risk assessment.
             </Text>
           </TouchableOpacity>
 
@@ -152,7 +170,7 @@ export default function RegisterScreen() {
               </View>
             </View>
             <Text className="text-zinc-400 text-xs leading-relaxed mt-1">
-              Manage multi-package shipments, aggregate shipment damage probability, route risk analytics, and dispatch window optimization.
+              Manage multi-package shipments, aggregate batch damage risk, route risk analytics, and dispatch weather windows.
             </Text>
           </TouchableOpacity>
 
@@ -164,7 +182,7 @@ export default function RegisterScreen() {
           </TouchableOpacity>
 
           <View className="flex-row justify-center mt-6 items-center">
-            <Text className="text-zinc-400 text-sm">Already registered? </Text>
+            <Text className="text-zinc-400 text-sm">Already have an account? </Text>
             <TouchableOpacity onPress={() => router.push('/auth/login' as any)}>
               <Text className="text-red-500 font-bold text-sm">Sign In</Text>
             </TouchableOpacity>
