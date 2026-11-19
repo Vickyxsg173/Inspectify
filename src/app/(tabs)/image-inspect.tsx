@@ -525,35 +525,19 @@ export default function ImageInspectScreen() {
           <ThemeToggle />
         </View>
 
-        {/* Company Only: Active Batch & Target Package Tracker */}
-        {isCompany && (
-          <View style={[s.shipmentBar, { backgroundColor: cardBg, borderColor }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
-                <View style={s.iconCircle}>
-                  <Truck size={17} color={RED} />
-                </View>
-                <View style={{ marginLeft: 10, flex: 1 }}>
-                  <Text style={[s.shipmentSub, { color: textSecondary, fontSize: 11 }]}>ACTIVE BATCH</Text>
-                  <Text style={[s.shipmentTitle, { color: textPrimary }]} numberOfLines={1}>
-                    {activeShipmentId || 'Default Batch'}
-                  </Text>
-                </View>
+        {/* Active Batch & Target Package Tracker */}
+        <View style={[s.shipmentBar, { backgroundColor: cardBg, borderColor }]}>
+          <View style={s.shipmentRow}>
+            <View style={s.shipmentLeft}>
+              <View style={s.iconCircle}>
+                <Truck size={17} color={RED} />
               </View>
-
-              <Pressable
-                onPress={() => setTraceabilityModalVisible(true)}
-                style={[s.headerSmallBtn, { backgroundColor: pillBg, borderColor }]}
-              >
-                <Text style={[s.headerSmallBtnText, { color: textPrimary }]}>Batches</Text>
-              </Pressable>
-            </View>
-
-            <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: borderColor, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={[s.shipmentSub, { color: textSecondary, fontSize: 11 }]}>TARGET PACKAGE</Text>
-                <Text style={{ color: textPrimary, fontWeight: '700', fontSize: 14 }}>
-                  {activeBoxId}
+              <View style={s.shipmentInfo}>
+                <Text style={[s.shipmentSub, { color: textSecondary }]} numberOfLines={1}>
+                  Active Batch: <Text style={{ color: textPrimary, fontWeight: '700' }}>{activeShipmentId || 'Default'}</Text>
+                </Text>
+                <Text style={[s.shipmentTitle, { color: textPrimary }]} numberOfLines={1}>
+                  Package: <Text style={{ color: RED, fontWeight: '800' }}>{activeBoxId}</Text>
                   {activeBoxObj?.status ? (
                     <Text style={{ color: activeBoxObj.status === 'INTACT' ? GREEN : RED, fontWeight: '600', fontSize: 12 }}>
                       {` • ${activeBoxObj.status}`}
@@ -561,17 +545,23 @@ export default function ImageInspectScreen() {
                   ) : ''}
                 </Text>
               </View>
-
-              <Pressable
-                onPress={() => setBoxPickerVisible(true)}
-                style={[s.headerSmallBtn, { backgroundColor: pillBg, borderColor }]}
-              >
-                <Text style={[s.headerSmallBtnText, { color: RED }]}>Change Box</Text>
-                <ChevronDown size={14} color={RED} />
-              </Pressable>
             </View>
+
+            <Pressable
+              onPress={() => setTraceabilityModalVisible(true)}
+              style={[
+                s.changeBtn,
+                {
+                  backgroundColor: isDark ? '#202026' : '#FFFFFF',
+                  borderColor: isDark ? '#33333F' : '#E2E2E8',
+                },
+              ]}
+              hitSlop={8}
+            >
+              <Text style={s.changeBtnText}>Change</Text>
+            </Pressable>
           </View>
-        )}
+        </View>
 
         {/* Clean Category Segment Selector */}
         <View style={[s.segContainer, { backgroundColor: segBg, borderColor }]}>
@@ -702,14 +692,30 @@ export default function ImageInspectScreen() {
 
             <View style={s.cardBody}>
               {!currentResult && !currentLoading && (
-                <Pressable
-                  onPress={category === 'package' ? analyzePackaging : analyzeScreen}
-                  style={s.analyzeBtn}
-                >
-                  <Text style={s.analyzeBtnText}>
-                    {category === 'package' ? 'Check Box for Defects' : 'Check Screen for Scratches'}
-                  </Text>
-                </Pressable>
+                <View style={{ gap: 10 }}>
+                  <Pressable
+                    onPress={category === 'package' ? analyzePackaging : analyzeScreen}
+                    style={s.analyzeBtn}
+                  >
+                    <Text style={s.analyzeBtnText}>
+                      {category === 'package' ? 'Check Box for Defects' : 'Check Screen for Scratches'}
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={resetCurrent}
+                    style={[
+                      s.changePhotoBtn,
+                      {
+                        backgroundColor: pillBg,
+                        borderColor,
+                      },
+                    ]}
+                  >
+                    <RefreshCcw size={14} color={textSecondary} />
+                    <Text style={[s.changePhotoBtnText, { color: textPrimary }]}>Change Photo</Text>
+                  </Pressable>
+                </View>
               )}
 
               {currentLoading && (
@@ -1107,13 +1113,23 @@ const s = StyleSheet.create({
   shipmentBar: {
     borderRadius: 16,
     borderWidth: 1,
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     marginBottom: 16,
+    overflow: 'hidden',
   },
-  shipmentBarTop: {
+  shipmentRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  shipmentLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+    minWidth: 0,
   },
   iconCircle: {
     width: 36,
@@ -1122,19 +1138,42 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(255,45,85,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  shipmentTitle: { fontSize: 14, fontWeight: '700' },
-  shipmentSub: { fontSize: 13, marginTop: 2 },
-  headerSmallBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
+  shipmentInfo: {
+    marginLeft: 10,
+    flex: 1,
+    minWidth: 0,
+  },
+  shipmentTitle: { fontSize: 13, fontWeight: '700' },
+  shipmentSub: { fontSize: 11, fontWeight: '500' },
+  changeBtn: {
+    paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 10,
     borderWidth: 1,
-    gap: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
-  headerSmallBtnText: { fontSize: 12, fontWeight: '700' },
+  changeBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: RED,
+  },
+  changePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  changePhotoBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   segContainer: {
     flexDirection: 'row',
     padding: 5,
