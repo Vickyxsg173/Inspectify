@@ -193,13 +193,15 @@ export default function HomeScreen() {
               onPress={() => router.push('/company/shipments' as any)}
               className="bg-zinc-50 dark:bg-[#121216] p-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80"
             >
-              <View className="flex-row items-center gap-3">
+              <View className="flex-row items-center gap-3 flex-1 pr-2">
                 <View className="w-8 h-8 rounded-lg bg-emerald-500/10 items-center justify-center">
                   <PlusCircle size={18} color="#10B981" />
                 </View>
-                <View>
+                <View className="flex-1">
                   <Text className="text-xs font-bold text-black dark:text-white">Shipment Management</Text>
-                  <Text className="text-[10px] text-zinc-500 dark:text-zinc-400">View batches, scan package boxes, compute binomial failure probability</Text>
+                  <Text className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5" numberOfLines={2}>
+                    View batches, scan package boxes, compute binomial failure probability
+                  </Text>
                 </View>
               </View>
               <ArrowRight size={16} color="#71717A" />
@@ -226,7 +228,7 @@ export default function HomeScreen() {
                   <Layers size={22} color="#FF2D55" />
                 </View>
                 <View className="flex-1">
-                  <View className="flex-row items-center gap-2">
+                  <View className="flex-row items-center gap-2 flex-wrap">
                     <Text className="text-base font-bold text-black dark:text-white">
                       Instant Parcel Risk Evaluator
                     </Text>
@@ -268,13 +270,15 @@ export default function HomeScreen() {
               onPress={() => router.push('/guide' as any)}
               className="bg-zinc-50 dark:bg-[#121216] p-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80"
             >
-              <View className="flex-row items-center gap-3">
+              <View className="flex-row items-center gap-3 flex-1 pr-2">
                 <View className="w-9 h-9 rounded-xl bg-zinc-200 dark:bg-zinc-800 items-center justify-center">
                   <HelpCircle size={18} color={isDark ? '#E4E4E7' : '#27272A'} />
                 </View>
-                <View>
+                <View className="flex-1">
                   <Text className="text-xs font-bold text-black dark:text-white">How Inspectify Works</Text>
-                  <Text className="text-[10px] text-zinc-500 dark:text-zinc-400">Step-by-step documentation for lighting, threshold tuning, and defect classes</Text>
+                  <Text className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5" numberOfLines={2}>
+                    Step-by-step documentation for lighting, threshold tuning, and defect classes
+                  </Text>
                 </View>
               </View>
               <ArrowRight size={16} color="#71717A" />
@@ -341,8 +345,8 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Recent Scans */}
-        {recentScans.length > 0 && (
+        {/* Recent Scans (Personal Recipient Accounts Only) */}
+        {!isCompany && recentScans.length > 0 && (
           <View>
             <View className="flex-row justify-between items-center mb-3">
               <Text className="text-xl font-bold text-black dark:text-white">

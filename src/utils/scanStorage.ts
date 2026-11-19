@@ -53,12 +53,17 @@ export async function getRecentScans(limit = 3): Promise<ScanRecord[]> {
 
 export async function saveScan(
   scanData: Omit<ScanRecord, 'id' | 'timestamp'>,
-  force = false
+  force = false,
+  isCompanyUser = false
 ): Promise<ScanRecord | null> {
   try {
+    // Company accounts don't need local scan history as images are stored in respective shipment boxes
+    if (isCompanyUser) {
+      return null;
+    }
+
     const autoSave = await isAutoSaveEnabled();
     if (!autoSave && !force) {
-      console.log('Auto-save is disabled. Scan skipped.');
       return null;
     }
 

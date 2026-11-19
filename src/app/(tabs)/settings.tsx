@@ -39,6 +39,7 @@ import {
   Trash2,
   User,
   X,
+  Info,
 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
@@ -62,6 +63,8 @@ type HistoryFilter = 'all' | 'defective' | 'intact';
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, session, accountType, companyName, signOut } = useAuth();
+  const isCompany = accountType === 'company';
+
   const [activeTab, setActiveTab] = useState<ActiveTab>('preferences');
 
   // Profile State
@@ -200,168 +203,117 @@ export default function SettingsScreen() {
               Settings
             </Text>
             <Text className="text-zinc-500 dark:text-zinc-400 font-medium text-sm mt-0.5">
-              Preferences & Scan History
+              Preferences & Configuration
             </Text>
           </View>
           <ThemeToggle />
         </View>
 
-        {/* Tab Switcher: Preferences vs History */}
-        <View className="flex-row bg-zinc-100 dark:bg-[#16161A] p-1.5 rounded-2xl mb-6 border border-zinc-200/80 dark:border-zinc-800">
-          <Pressable
-            onPress={() => setActiveTab('preferences')}
-            className={`flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-2 ${
-              activeTab === 'preferences'
-                ? 'bg-white dark:bg-[#222226] shadow-sm'
-                : ''
-            }`}
-          >
-            <Settings
-              size={16}
-              color={activeTab === 'preferences' ? '#FF2D55' : '#71717A'}
-            />
-            <Text
-              className={`text-sm font-bold ${
+        {/* Tab Switcher: Only show History tab for personal accounts (Enterprise saves directly to shipments) */}
+        {!isCompany ? (
+          <View className="flex-row bg-zinc-100 dark:bg-[#16161A] p-1.5 rounded-2xl mb-6 border border-zinc-200/80 dark:border-zinc-800">
+            <Pressable
+              onPress={() => setActiveTab('preferences')}
+              className={`flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-2 ${
                 activeTab === 'preferences'
-                  ? 'text-black dark:text-white'
-                  : 'text-zinc-500 dark:text-zinc-400'
+                  ? 'bg-white dark:bg-[#222226] shadow-sm'
+                  : ''
               }`}
             >
-              Preferences
-            </Text>
-          </Pressable>
+              <Settings
+                size={16}
+                color={activeTab === 'preferences' ? '#FF2D55' : '#71717A'}
+              />
+              <Text
+                className={`text-sm font-bold ${
+                  activeTab === 'preferences'
+                    ? 'text-black dark:text-white'
+                    : 'text-zinc-500 dark:text-zinc-400'
+                }`}
+              >
+                Preferences
+              </Text>
+            </Pressable>
 
-          <Pressable
-            onPress={() => setActiveTab('history')}
-            className={`flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-2 ${
-              activeTab === 'history'
-                ? 'bg-white dark:bg-[#222226] shadow-sm'
-                : ''
-            }`}
-          >
-            <History
-              size={16}
-              color={activeTab === 'history' ? '#FF2D55' : '#71717A'}
-            />
-            <Text
-              className={`text-sm font-bold ${
+            <Pressable
+              onPress={() => setActiveTab('history')}
+              className={`flex-1 py-2.5 rounded-xl items-center flex-row justify-center gap-2 ${
                 activeTab === 'history'
-                  ? 'text-black dark:text-white'
-                  : 'text-zinc-500 dark:text-zinc-400'
+                  ? 'bg-white dark:bg-[#222226] shadow-sm'
+                  : ''
               }`}
             >
-              History {historyList.length > 0 ? `(${historyList.length})` : ''}
-            </Text>
-          </Pressable>
-        </View>
+              <History
+                size={16}
+                color={activeTab === 'history' ? '#FF2D55' : '#71717A'}
+              />
+              <Text
+                className={`text-sm font-bold ${
+                  activeTab === 'history'
+                    ? 'text-black dark:text-white'
+                    : 'text-zinc-500 dark:text-zinc-400'
+                }`}
+              >
+                History {historyList.length > 0 ? `(${historyList.length})` : ''}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {/* ================= TAB 1: PREFERENCES ================= */}
-        {activeTab === 'preferences' ? (
+        {activeTab === 'preferences' || isCompany ? (
           <>
-            {/* User Profile Card */}
-            <View className="bg-white dark:bg-[#111114] rounded-3xl p-6 mb-6 shadow-sm border border-zinc-200/80 dark:border-zinc-800">
-              <View className="items-center mb-6">
-                <Pressable onPress={pickProfileImage} className="relative">
-                  <View className="w-24 h-24 rounded-full bg-zinc-100 dark:bg-zinc-900 items-center justify-center overflow-hidden border-2 border-[#FF2D55]/30">
-                    {profileImage ? (
-                      <Image source={{ uri: profileImage }} className="w-full h-full" />
-                    ) : (
-                      <User size={44} color="#FF2D55" />
-                    )}
-                  </View>
-                  <View className="absolute bottom-0 right-0 bg-[#FF2D55] p-2 rounded-full border-2 border-white dark:border-[#111114]">
-                    <Camera size={14} color="#FFFFFF" />
-                  </View>
-                </Pressable>
-
-                {/* Editable Profile Name */}
-                {isEditingName ? (
-                  <View className="flex-row items-center gap-2 mt-4">
-                    <TextInput
-                      value={profileName}
-                      onChangeText={setProfileName}
-                      autoFocus
-                      placeholder="Your Name"
-                      placeholderTextColor="#71717A"
-                      className="bg-zinc-100 dark:bg-zinc-800 text-lg font-bold text-black dark:text-white px-3 py-1.5 rounded-xl border border-[#FF2D55]/50 min-w-[200px] text-center"
-                    />
-                    <Pressable
-                      onPress={handleSaveName}
-                      className="bg-[#FF2D55] p-2 rounded-xl"
-                    >
-                      <Check size={18} color="#FFFFFF" />
-                    </Pressable>
-                  </View>
-                ) : (
-                  <Pressable
-                    onPress={() => setIsEditingName(true)}
-                    className="flex-row items-center gap-2 mt-3.5 px-3 py-1 rounded-xl active:bg-zinc-100 dark:active:bg-zinc-800"
-                  >
-                    <Text className="text-xl font-black text-black dark:text-white">
-                      {profileName}
-                    </Text>
-                    <Edit3 size={15} color="#FF2D55" />
+            {/* Profile Section */}
+            <View className="mb-6">
+              <View className="bg-white dark:bg-[#111114] rounded-3xl p-5 shadow-sm border border-zinc-200/80 dark:border-zinc-800">
+                <View className="flex-row items-center gap-4">
+                  <Pressable onPress={pickProfileImage} className="relative">
+                    <View className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 border-2 border-[#FF2D55]/30 overflow-hidden items-center justify-center">
+                      {profileImage ? (
+                        <Image source={{ uri: profileImage }} className="w-full h-full" />
+                      ) : (
+                        <User size={30} color={isCompany ? '#3B82F6' : '#FF2D55'} />
+                      )}
+                    </View>
+                    <View className="absolute bottom-0 right-0 bg-[#FF2D55] w-5 h-5 rounded-full items-center justify-center border-2 border-white dark:border-[#111114]">
+                      <Camera size={10} color="#FFFFFF" />
+                    </View>
                   </Pressable>
-                )}
 
-                <Text className="text-zinc-500 dark:text-zinc-400 text-xs mt-1 font-medium">{profileRole}</Text>
-              </View>
-
-              {/* Supabase Account & Role Section */}
-              <View className="pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                {session ? (
-                  <View>
-                    <View className="flex-row items-center justify-between mb-2">
-                      <Text className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Account Role</Text>
-                      <View className="bg-red-500/10 px-2.5 py-0.5 rounded-full border border-red-500/30">
-                        <Text className="text-[10px] font-bold text-red-500 uppercase tracking-widest">
-                          {accountType === 'company' ? 'Enterprise Company' : 'Personal User'}
+                  <View className="flex-1">
+                    <View className="flex-row items-center gap-2">
+                      <Text className="text-lg font-black text-black dark:text-white" numberOfLines={1}>
+                        {companyName || user?.email?.split('@')[0] || profileName}
+                      </Text>
+                      <View className="bg-[#FF2D55]/10 px-2 py-0.5 rounded-md">
+                        <Text className="text-[10px] font-black text-[#FF2D55] uppercase">
+                          {isCompany ? 'ENTERPRISE' : 'PERSONAL'}
                         </Text>
                       </View>
                     </View>
-                    <Text className="text-sm font-bold text-black dark:text-white mb-0.5">{user?.email}</Text>
-                    {companyName && (
-                      <Text className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">Company: {companyName}</Text>
-                    )}
-
-                    <View className="flex-row gap-2 mt-3">
-                      {accountType === 'company' && (
-                        <Pressable
-                          onPress={() => router.push('/company/dashboard' as any)}
-                          className="flex-1 bg-red-500 py-2.5 rounded-xl items-center"
-                        >
-                          <Text className="text-white font-bold text-xs">Company Portal</Text>
-                        </Pressable>
-                      )}
-                      <Pressable
-                        onPress={() => signOut().then(() => router.replace('/'))}
-                        className="flex-1 bg-zinc-100 dark:bg-zinc-800 py-2.5 rounded-xl items-center border border-zinc-200 dark:border-zinc-700"
-                      >
-                        <Text className="text-zinc-700 dark:text-zinc-300 font-bold text-xs">Sign Out</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ) : (
-                  <View className="items-center py-2">
-                    <Text className="text-xs text-zinc-500 dark:text-zinc-400 text-center mb-3">
-                      Sign in to sync multi-box shipments, track damage analytics, and run ML tabular predictions.
+                    <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5" numberOfLines={1}>
+                      {user?.email}
                     </Text>
-                    <View className="flex-row gap-2 w-full">
-                      <Pressable
-                        onPress={() => router.push('/auth/login' as any)}
-                        className="flex-1 bg-red-500 py-2.5 rounded-xl items-center"
-                      >
-                        <Text className="text-white font-bold text-xs">Sign In</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => router.push('/auth/register' as any)}
-                        className="flex-1 bg-zinc-100 dark:bg-zinc-800 py-2.5 rounded-xl items-center border border-zinc-200 dark:border-zinc-700"
-                      >
-                        <Text className="text-zinc-700 dark:text-zinc-300 font-bold text-xs">Register</Text>
-                      </Pressable>
-                    </View>
                   </View>
-                )}
+                </View>
+
+                {/* Account info and logout */}
+                <View className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex-row gap-2">
+                  {isCompany && (
+                    <Pressable
+                      onPress={() => router.push('/company/dashboard' as any)}
+                      className="flex-1 bg-red-500 py-2.5 rounded-xl items-center"
+                    >
+                      <Text className="text-white font-bold text-xs">Company Portal</Text>
+                    </Pressable>
+                  )}
+                  <Pressable
+                    onPress={() => signOut().then(() => router.replace('/auth/login' as any))}
+                    className="flex-1 bg-zinc-100 dark:bg-zinc-800 py-2.5 rounded-xl items-center border border-zinc-200 dark:border-zinc-700"
+                  >
+                    <Text className="text-zinc-700 dark:text-zinc-300 font-bold text-xs">Sign Out</Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
 
@@ -374,7 +326,7 @@ export default function SettingsScreen() {
                 </Text>
               </View>
 
-              <View className="bg-white dark:bg-[#111114] rounded-3xl p-6 shadow-sm border border-zinc-200/80 dark:border-zinc-800">
+              <View className="bg-white dark:bg-[#111114] rounded-3xl p-5 shadow-sm border border-zinc-200/80 dark:border-zinc-800">
                 {/* Active Detection Model Dropdown */}
                 <View className="mb-6 relative z-30">
                   <View className="flex-row justify-between items-center mb-2">
@@ -452,25 +404,22 @@ export default function SettingsScreen() {
                       })}
                     </View>
                   )}
-                  <Text className="text-zinc-500 dark:text-zinc-400 text-xs mt-2">
-                    Switch models to test performance. Seamlessly falls back to standard model if an error occurs.
-                  </Text>
                 </View>
 
-                {/* Confidence Thresholds For Both Models */}
-                <View className="mb-6 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-                  <View className="flex-row justify-between items-center mb-3">
-                    <View>
-                      <Text className="text-black dark:text-white font-bold text-base">
-                        Model Confidence Thresholds
+                {/* Confidence Thresholds Header with Reset Button Inside Box */}
+                <View className="mb-6 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                  <View className="flex-row justify-between items-center mb-2">
+                    <View className="flex-1 pr-2">
+                      <Text className="text-black dark:text-white font-bold text-sm">
+                        Confidence Thresholds
                       </Text>
-                      <Text className="text-zinc-500 dark:text-zinc-400 text-xs mt-0.5">
-                        Controls detection sensitivity. Directly alters scan & live stream output.
+                      <Text className="text-zinc-500 dark:text-zinc-400 text-xs">
+                        Controls detection sensitivity
                       </Text>
                     </View>
                     <Pressable
                       onPress={handleResetToDefaults}
-                      className="bg-zinc-100 dark:bg-zinc-800 px-3 py-1.5 rounded-lg active:opacity-70"
+                      className="bg-red-500/10 border border-red-500/25 px-2.5 py-1.5 rounded-lg active:opacity-75"
                     >
                       <Text className="text-xs font-bold text-[#FF2D55]">Reset Defaults</Text>
                     </Pressable>
@@ -484,286 +433,180 @@ export default function SettingsScreen() {
                   )}
 
                   {/* 1. Standard Model (best.pt) Threshold Slider */}
-                  <View className="bg-zinc-50 dark:bg-zinc-900/70 p-4 rounded-2xl mb-3.5 border border-zinc-200/80 dark:border-zinc-800">
+                  <View className="bg-zinc-50 dark:bg-zinc-900/70 p-3.5 rounded-2xl mb-3 border border-zinc-200/80 dark:border-zinc-800">
                     <View className="flex-row justify-between items-center mb-1">
-                      <View className="flex-row items-center gap-2">
-                        <Text className="text-black dark:text-white font-bold text-sm">
-                          Standard Model (best.pt)
-                        </Text>
-                        {selectedModel === 'best' && (
-                          <View className="bg-[#FF2D55] px-2 py-0.5 rounded-md">
-                            <Text className="text-[10px] font-black text-white">ACTIVE</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text className="text-[#FF2D55] font-black text-base">
+                      <Text className="text-black dark:text-white font-bold text-xs">
+                        Standard Model (best.pt)
+                      </Text>
+                      <Text className="text-[#FF2D55] font-black text-xs font-mono">
                         {(threshBest * 100).toFixed(0)}%
                       </Text>
                     </View>
-
                     <Slider
-                      style={{ width: '100%', height: 36 }}
-                      minimumValue={0.05}
-                      maximumValue={0.80}
-                      step={0.01}
                       value={threshBest}
                       onValueChange={(val) => handleThresholdChange('best', val)}
+                      minimumValue={0.05}
+                      maximumValue={0.9}
+                      step={0.01}
                       minimumTrackTintColor="#FF2D55"
-                      maximumTrackTintColor="#E4E4E7"
+                      maximumTrackTintColor={selectedModel === 'best' ? '#3F3F46' : '#27272A'}
                       thumbTintColor="#FF2D55"
                     />
-
-                    <View className="flex-row justify-between items-center mt-1">
-                      <Text className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                        Higher Recall (5%)
-                      </Text>
-                      <View className="bg-[#FF2D55]/10 px-2 py-0.5 rounded-md border border-[#FF2D55]/20">
-                        <Text className="text-[10px] font-bold text-[#FF2D55]">
-                          Optimum: 12% (Fine Creases)
-                        </Text>
-                      </View>
-                      <Text className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                        Strict (80%)
-                      </Text>
-                    </View>
                   </View>
 
-                  {/* 2. Latest Defect Model (latest_model_defect.pt) Threshold Slider */}
-                  <View className="bg-zinc-50 dark:bg-zinc-900/70 p-4 rounded-2xl mb-2 border border-zinc-200/80 dark:border-zinc-800">
+                  {/* 2. Latest Multi-Defect Model Threshold Slider */}
+                  <View className="bg-zinc-50 dark:bg-zinc-900/70 p-3.5 rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
                     <View className="flex-row justify-between items-center mb-1">
-                      <View className="flex-row items-center gap-2">
-                        <Text className="text-black dark:text-white font-bold text-sm">
-                          Latest Defect Model (latest_model_defect.pt)
-                        </Text>
-                        {selectedModel === 'latest' && (
-                          <View className="bg-[#FF2D55] px-2 py-0.5 rounded-md">
-                            <Text className="text-[10px] font-black text-white">ACTIVE</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text className="text-[#FF2D55] font-black text-base">
+                      <Text className="text-black dark:text-white font-bold text-xs">
+                        Latest Multi-Defect (latest_model_defect.pt)
+                      </Text>
+                      <Text className="text-[#FF2D55] font-black text-xs font-mono">
                         {(threshLatest * 100).toFixed(0)}%
                       </Text>
                     </View>
-
                     <Slider
-                      style={{ width: '100%', height: 36 }}
-                      minimumValue={0.05}
-                      maximumValue={0.80}
-                      step={0.01}
                       value={threshLatest}
                       onValueChange={(val) => handleThresholdChange('latest', val)}
+                      minimumValue={0.05}
+                      maximumValue={0.9}
+                      step={0.01}
                       minimumTrackTintColor="#FF2D55"
-                      maximumTrackTintColor="#E4E4E7"
+                      maximumTrackTintColor="#3F3F46"
                       thumbTintColor="#FF2D55"
                     />
+                  </View>
+                </View>
 
-                    <View className="flex-row justify-between items-center mt-1">
-                      <Text className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                        Higher Recall (5%)
+                {/* History Auto-Save Setting: Only relevant for Personal accounts */}
+                {!isCompany && (
+                  <View className="flex-row justify-between items-center py-3 border-t border-zinc-100 dark:border-zinc-800">
+                    <View className="flex-1 pr-4">
+                      <Text className="text-black dark:text-white font-bold text-sm">
+                        Auto-Save Scans to History
                       </Text>
-                      <View className="bg-[#FF2D55]/10 px-2 py-0.5 rounded-md border border-[#FF2D55]/20">
-                        <Text className="text-[10px] font-bold text-[#FF2D55]">
-                          Optimum: 25% (Corner Crush)
-                        </Text>
-                      </View>
-                      <Text className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                        Strict (80%)
+                      <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        Toggle to automatically save or stop saving scans in the History tab
                       </Text>
                     </View>
+                    <Switch
+                      value={autoSave}
+                      onValueChange={handleAutoSaveChange}
+                      trackColor={{ false: '#71717A', true: '#FF2D55' }}
+                    />
                   </View>
+                )}
 
-                  <Text className="text-zinc-500 dark:text-zinc-400 text-xs mt-2 leading-relaxed">
-                    Tip for fine damage: Subtle corner creases and small paper tears generate lower confidence scores (~13-36%). Use calibrated defaults (12% for Standard, 25% for Latest) so finely damaged boxes are correctly flagged as DEFECTIVE.
-                  </Text>
-                </View>
-
-                {/* Auto-Save Toggle */}
-                <View className="flex-row justify-between items-center py-3.5 border-t border-zinc-100 dark:border-zinc-800">
-                  <View className="flex-1 pr-4">
-                    <Text className="text-black dark:text-white font-bold text-sm">
-                      Auto-save Scans
-                    </Text>
-                    <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      Saves every defect scan to your local History tab
+                {isCompany && (
+                  <View className="py-2.5 px-3 bg-zinc-50 dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 flex-row items-center gap-2">
+                    <Info size={16} color="#3B82F6" />
+                    <Text className="text-xs text-zinc-500 dark:text-zinc-400 flex-1">
+                      Enterprise Account: Package and screen scans automatically sync into active shipments.
                     </Text>
                   </View>
-                  <Switch
-                    value={autoSave}
-                    onValueChange={handleAutoSaveChange}
-                    trackColor={{ false: '#71717A', true: '#FF2D55' }}
-                  />
-                </View>
-
-                {/* High Precision Mode */}
-                <View className="flex-row justify-between items-center py-3.5 border-t border-zinc-100 dark:border-zinc-800">
-                  <Text className="text-black dark:text-white font-bold text-sm">
-                    High Precision Mode
-                  </Text>
-                  <Switch
-                    value={highPrecision}
-                    onValueChange={setHighPrecision}
-                    trackColor={{ false: '#71717A', true: '#FF2D55' }}
-                  />
-                </View>
+                )}
               </View>
             </View>
-
           </>
         ) : (
-          /* ================= TAB 2: SCAN HISTORY ================= */
-          <View className="mb-8">
-            {/* Filter Pills & Stats */}
+          /* ================= TAB 2: HISTORY (Personal Only) ================= */
+          <View>
+            {/* Filter Chips & Clear All */}
             <View className="flex-row justify-between items-center mb-4">
               <View className="flex-row gap-2">
                 <Pressable
                   onPress={() => setHistoryFilter('all')}
-                  className={`px-3.5 py-1.5 rounded-full ${
+                  className={`px-3 py-1.5 rounded-full border ${
                     historyFilter === 'all'
-                      ? 'bg-[#FF2D55]'
-                      : 'bg-zinc-100 dark:bg-zinc-800'
+                      ? 'bg-[#FF2D55] border-[#FF2D55]'
+                      : 'bg-zinc-100 dark:bg-[#16161A] border-zinc-200 dark:border-zinc-800'
                   }`}
                 >
-                  <Text
-                    className={`text-xs font-black ${
-                      historyFilter === 'all'
-                        ? 'text-white'
-                        : 'text-zinc-600 dark:text-zinc-400'
-                    }`}
-                  >
+                  <Text className={`text-xs font-bold ${historyFilter === 'all' ? 'text-white' : 'text-zinc-600 dark:text-zinc-400'}`}>
                     All ({historyList.length})
                   </Text>
                 </Pressable>
 
                 <Pressable
                   onPress={() => setHistoryFilter('defective')}
-                  className={`px-3.5 py-1.5 rounded-full ${
+                  className={`px-3 py-1.5 rounded-full border ${
                     historyFilter === 'defective'
-                      ? 'bg-[#FF2D55]'
-                      : 'bg-zinc-100 dark:bg-zinc-800'
+                      ? 'bg-[#FF2D55] border-[#FF2D55]'
+                      : 'bg-zinc-100 dark:bg-[#16161A] border-zinc-200 dark:border-zinc-800'
                   }`}
                 >
-                  <Text
-                    className={`text-xs font-black ${
-                      historyFilter === 'defective'
-                        ? 'text-white'
-                        : 'text-zinc-600 dark:text-zinc-400'
-                    }`}
-                  >
-                    Defects ({defectCount})
+                  <Text className={`text-xs font-bold ${historyFilter === 'defective' ? 'text-white' : 'text-zinc-600 dark:text-zinc-400'}`}>
+                    Defective ({defectCount})
                   </Text>
                 </Pressable>
 
                 <Pressable
                   onPress={() => setHistoryFilter('intact')}
-                  className={`px-3.5 py-1.5 rounded-full ${
+                  className={`px-3 py-1.5 rounded-full border ${
                     historyFilter === 'intact'
-                      ? 'bg-black dark:bg-white'
-                      : 'bg-zinc-100 dark:bg-zinc-800'
+                      ? 'bg-emerald-500 border-emerald-500'
+                      : 'bg-zinc-100 dark:bg-[#16161A] border-zinc-200 dark:border-zinc-800'
                   }`}
                 >
-                  <Text
-                    className={`text-xs font-black ${
-                      historyFilter === 'intact'
-                        ? 'text-white dark:text-black'
-                        : 'text-zinc-600 dark:text-zinc-400'
-                    }`}
-                  >
-                    Intact ({intactCount})
+                  <Text className={`text-xs font-bold ${historyFilter === 'intact' ? 'text-white' : 'text-zinc-600 dark:text-zinc-400'}`}>
+                    Passed ({intactCount})
                   </Text>
                 </Pressable>
               </View>
 
-              {historyList.length > 0 ? (
-                <Pressable
-                  onPress={handleClearAllHistory}
-                  className="p-2 rounded-xl active:bg-zinc-100 dark:active:bg-zinc-800"
-                >
-                  <Trash2 size={18} color="#FF2D55" />
+              {historyList.length > 0 && (
+                <Pressable onPress={handleClearAllHistory} className="p-1">
+                  <Text className="text-xs font-bold text-red-500">Clear All</Text>
                 </Pressable>
-              ) : null}
+              )}
             </View>
 
-            {/* Scan History Items */}
+            {/* History Cards List */}
             {filteredHistory.length > 0 ? (
-              filteredHistory.map((scan) => {
-                const isDefect = scan.status.toUpperCase() === 'DEFECTIVE';
-                const imageSrc = scan.annotatedImage
-                  ? `${BACKEND_URL}/uploads/${scan.annotatedImage}`
-                  : scan.imageUri;
-
-                return (
-                  <Pressable
-                    key={scan.id}
-                    onPress={() => setSelectedScan(scan)}
-                    className="bg-white dark:bg-[#111114] p-4 rounded-2xl mb-3 border border-zinc-200/80 dark:border-zinc-800 shadow-sm active:opacity-90"
-                  >
-                    <View className="flex-row items-center gap-3.5">
-                      {/* Image Thumbnail */}
-                      <View className="w-16 h-16 rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700">
-                        {imageSrc ? (
-                          <Image
-                            source={{ uri: imageSrc }}
-                            className="w-full h-full"
-                            resizeMode="cover"
-                          />
-                        ) : (
-                          <View className="w-full h-full items-center justify-center">
-                            <Layers size={20} color="#71717A" />
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Content */}
-                      <View className="flex-1">
-                        <View className="flex-row items-center justify-between mb-1">
-                          <Text
-                            numberOfLines={1}
-                            className="font-bold text-base text-black dark:text-white flex-1 pr-2"
-                          >
-                            {scan.title || (isDefect ? 'Defective Package' : 'Intact Package')}
+              <View className="gap-2.5">
+                {filteredHistory.map((scan) => {
+                  const isDefective = scan.status.toUpperCase() === 'DEFECTIVE';
+                  return (
+                    <Pressable
+                      key={scan.id}
+                      onPress={() => setSelectedScan(scan)}
+                      className="bg-white dark:bg-[#111114] p-3.5 rounded-2xl border border-zinc-200/80 dark:border-zinc-800 flex-row items-center justify-between shadow-sm active:bg-zinc-50 dark:active:bg-zinc-900"
+                    >
+                      <View className="flex-row items-center gap-3.5 flex-1 pr-2">
+                        <Image
+                          source={{ uri: scan.imageUri }}
+                          className="w-14 h-14 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700"
+                          resizeMode="cover"
+                        />
+                        <View className="flex-1">
+                          <Text className="text-sm font-bold text-black dark:text-white" numberOfLines={1}>
+                            {scan.title}
                           </Text>
-                          <View
-                            className={`px-2.5 py-0.5 rounded-full ${
-                              isDefect
-                                ? 'bg-[#FF2D55]/10 border border-[#FF2D55]/20'
-                                : 'bg-zinc-100 dark:bg-zinc-800'
-                            }`}
-                          >
-                            <Text
-                              className={`text-[10px] font-black ${
-                                isDefect
-                                  ? 'text-[#FF2D55]'
-                                  : 'text-zinc-800 dark:text-zinc-200'
-                              }`}
-                            >
-                              {isDefect ? 'DEFECT' : 'INTACT'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        <Text
-                          numberOfLines={1}
-                          className="text-xs text-zinc-500 dark:text-zinc-400 font-medium"
-                        >
-                          {scan.reason || 'Surface scan completed.'}
-                        </Text>
-
-                        <View className="flex-row items-center gap-2 mt-1.5">
-                          <Clock size={11} color="#71717A" />
-                          <Text className="text-[11px] text-zinc-400 font-semibold">
+                          <Text className="text-xs text-zinc-400 mt-0.5" numberOfLines={1}>
+                            {scan.reason || 'AI Visual QC'}
+                          </Text>
+                          <Text className="text-[10px] text-zinc-500 font-medium mt-1">
                             {formatRelativeTime(scan.timestamp)}
                           </Text>
-                          <Text className="text-[11px] text-zinc-400">•</Text>
-                          <Text className="text-[11px] text-[#FF2D55] font-bold">
-                            {(scan.confidence * 100).toFixed(0)}% Confidence
-                          </Text>
                         </View>
                       </View>
-                    </View>
-                  </Pressable>
-                );
-              })
+
+                      <View
+                        className={`px-2.5 py-1 rounded-full ${
+                          isDefective ? 'bg-[#FF2D55]/10' : 'bg-emerald-500/10'
+                        }`}
+                      >
+                        <Text
+                          className={`text-xs font-black ${
+                            isDefective ? 'text-[#FF2D55]' : 'text-emerald-500'
+                          }`}
+                        >
+                          {isDefective ? 'DEFECT' : 'PASS'}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
             ) : (
               <View className="bg-zinc-50 dark:bg-[#111114] p-8 rounded-3xl border border-zinc-200/80 dark:border-zinc-800 items-center justify-center">
                 <History size={36} color="#FF2D55" />
@@ -771,7 +614,9 @@ export default function SettingsScreen() {
                   No Saved Scans
                 </Text>
                 <Text className="text-xs text-zinc-400 text-center mt-1">
-                  When auto-save is enabled, all your AI quality inspections will be saved here automatically.
+                  {autoSave
+                    ? 'All packaging and screen inspections will appear here.'
+                    : 'Auto-save is turned off in Preferences. Turn it on to save scan history.'}
                 </Text>
               </View>
             )}
