@@ -129,8 +129,11 @@ if not os.path.exists(SCREEN_SCRATCH_MODEL_PATH):
 
 model_screen_scratch = YOLO(SCREEN_SCRATCH_MODEL_PATH)
 
-def analyze_screen_scratch_with_selected_model(image_path: str, model_type: Optional[str] = None, confidence_threshold: float = 0.12):
-    choice = (model_type or active_detection_model or "best").lower().strip()
+def analyze_screen_scratch_with_selected_model(image_path: str, model_type: Optional[str] = None, confidence_threshold: float = 0.10):
+    """
+    Exclusively uses screen_scratch_model.pt for all screen scratch & crack detection
+    in both Personal and Company modes.
+    """
     conf_thresh = max(0.05, min(0.95, confidence_threshold))
     base, ext = os.path.splitext(image_path)
     annotated_path = f"{base}_annotated{ext}"
@@ -141,65 +144,6 @@ def analyze_screen_scratch_with_selected_model(image_path: str, model_type: Opti
     defects = []
     detected_categories = []
 
-    # 1. If user selected 'latest' in Settings: use ONLY latest_model_defect.pt
-    if choice in ("latest", "latest_model", "latest_model_defect", "latest_model_defect.pt") and model_latest is not None:
-        try:
-            results_latest = model_latest(image_path, conf=conf_thresh)
-            if len(results_latest) > 0 and len(results_latest[0].boxes) > 0:
-                img = results_latest[0].orig_img
-                h, w = img.shape[:2] if img is not None else (1, 1)
-                for box in results_latest[0].boxes:
-                    conf = float(box.conf[0])
-                    cls_id = int(box.cls[0])
-                    cls_name = model_latest.names.get(cls_id, "screen defect") if hasattr(model_latest, "names") else "screen defect"
-                    is_screen_class = cls_id in (0, 1, 2, 3, 4) or "screen" in cls_name.lower() or "crack" in cls_name.lower() or "scratch" in cls_name.lower()
-                    if is_screen_class and conf >= conf_thresh:
-                        has_defect = True
-                        defect_count += 1
-                        if conf > max_defect_conf:
-                            max_defect_conf = conf
-                        if cls_name not in detected_categories:
-                            detected_categories.append(cls_name)
-                        xyxy = box.xyxy[0].cpu().numpy().astype(int)
-                        x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
-                        defects.append({
-                            "id": f"latest_scr_{len(defects)}",
-                            "label": cls_name.upper(),
-                            "category": cls_name.capitalize(),
-                            "confidence": round(conf, 2),
-                            "box_normalized": [
-                                max(0.0, min(1.0, x1 / w)),
-                                max(0.0, min(1.0, y1 / h)),
-                                max(0.0, min(1.0, x2 / w)),
-                                max(0.0, min(1.0, y2 / h)),
-                            ],
-                            "box_pixels": [x1, y1, x2, y2]
-                        })
-                results_latest[0].save(filename=annotated_path)
-        except Exception as e_lat:
-            print("latest_model screen check error:", e_lat)
-
-        annotated_filename = os.path.basename(annotated_path) if os.path.exists(annotated_path) else os.path.basename(image_path)
-        if has_defect:
-            desc = ", ".join(detected_categories[:2]) if detected_categories else "screen defect"
-            return {
-                "status": "DEFECTIVE",
-                "confidence": round(max_defect_conf, 2),
-                "reason": f"Detected {defect_count} defect(s) [{desc}] on display glass panel.",
-                "annotated_image": annotated_filename,
-                "model_used": "latest_model_defect.pt",
-                "defects": defects
-            }
-        return {
-            "status": "INTACT",
-            "confidence": 0.95,
-            "reason": "No screen scratches, cracks, or glass fractures detected by latest defect model.",
-            "annotated_image": annotated_filename,
-            "model_used": "latest_model_defect.pt",
-            "defects": []
-        }
-
-    # 2. If user selected 'best' (Standard Model) in Settings: use ONLY screen_scratch_model.pt
     try:
         results_scratch = model_screen_scratch(image_path, conf=conf_thresh)
         if len(results_scratch) > 0 and len(results_scratch[0].boxes) > 0:
@@ -250,7 +194,7 @@ def analyze_screen_scratch_with_selected_model(image_path: str, model_type: Opti
     return {
         "status": "INTACT",
         "confidence": 0.95,
-        "reason": "No screen scratches, cracks, or glass fractures detected by standard screen model.",
+        "reason": "No screen scratches, cracks, or glass fractures detected by screen scratch model.",
         "annotated_image": annotated_filename,
         "model_used": "screen_scratch_model.pt",
         "defects": []
@@ -978,7 +922,7 @@ def process_video_inspection_job(job_id: str, video_path: str, extraction_fps: i
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         writer = cv2.VideoWriter(raw_output_path, fourcc, fps, (width, height))
 
-        sample_rate = max(1, min(10, extraction_fps))
+        sample_rate = max(1, min(60, extraction_fps))
         sample_step = max(1, int(round(fps / sample_rate)))
 
         frame_idx = 0
