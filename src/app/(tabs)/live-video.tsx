@@ -663,28 +663,34 @@ export default function LiveVideoScreen() {
 
             {/* Speed Option */}
             <View style={{ marginBottom: 16 }}>
-              <Text style={[vs.sectionLabel, { color: textPrimary }]}>Inspection Speed:</Text>
+              <Text style={[vs.sectionLabel, { color: textPrimary }]}>Inspection Speed & Smoothness:</Text>
               <View style={vs.fpsRow}>
-                {[1, 2, 5].map((rate) => (
+                {[
+                  { rate: 1, label: 'Fast (1 FPS)' },
+                  { rate: 2, label: 'Standard (2 FPS)' },
+                  { rate: 5, label: 'Detailed (5 FPS)' },
+                  { rate: 24, label: 'Smooth (24 FPS)' },
+                  { rate: 30, label: 'Ultra (30 FPS)' },
+                ].map((item) => (
                   <Pressable
-                    key={rate}
-                    onPress={() => setVideoFps(rate)}
+                    key={item.rate}
+                    onPress={() => setVideoFps(item.rate)}
                     disabled={busy}
                     style={[
                       vs.fpsChip,
                       {
-                        backgroundColor: videoFps === rate ? RED : pillBg,
-                        borderColor: videoFps === rate ? RED : borderColor,
+                        backgroundColor: videoFps === item.rate ? RED : pillBg,
+                        borderColor: videoFps === item.rate ? RED : borderColor,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         vs.fpsChipText,
-                        { color: videoFps === rate ? WHITE : textSecondary },
+                        { color: videoFps === item.rate ? WHITE : textSecondary },
                       ]}
                     >
-                      {rate === 1 ? 'Fast (1 FPS)' : rate === 2 ? 'Standard (2 FPS)' : 'Detailed (5 FPS)'}
+                      {item.label}
                     </Text>
                   </Pressable>
                 ))}
@@ -970,8 +976,8 @@ const vs = StyleSheet.create({
   videoSelectorTitle: { fontSize: 15, fontWeight: '700', marginTop: 8 },
   videoSelectorSub: { fontSize: 13, marginTop: 3 },
   sectionLabel: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  fpsRow: { flexDirection: 'row', gap: 8 },
-  fpsChip: { flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1 },
+  fpsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  fpsChip: { minWidth: '30%', flexGrow: 1, paddingVertical: 10, paddingHorizontal: 6, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   fpsChipText: { fontSize: 12, fontWeight: '700' },
   startBtn: { paddingVertical: 15, borderRadius: 14, alignItems: 'center' },
   startBtnText: { fontSize: 15, fontWeight: '800' },
