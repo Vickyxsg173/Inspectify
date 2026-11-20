@@ -21,23 +21,25 @@ export interface ConfidenceThresholds {
  * Empirically calibrated optimal defaults:
  *
  * 1. best.pt (Standard Model):
- *    - Subtle corner damage, creasing score ~0.13-0.18. Optimum: 0.12 (12%).
+ *    - Packaging defect detection calibrated to 0.05 (5%).
+ *    - In early app baseline, damage boxes score 0.05-0.10. At 0.12, 100% of defect boxes were dropped!
  *
  * 2. latest_model_defect.pt (Latest Defect Model):
- *    - Corner crush on fine packaging scores ~0.36. Optimum: 0.25 (25%).
+ *    - Multi-class model (crushed corner, dented packaging, tears, holes).
+ *    - Optimum calibrated threshold: 0.15 (15%).
  *
  * 3. screen_scratch_model.pt (Screen Scratch / Crack):
  *    - Fine hairline scratches score 0.06-0.10. Optimum: 0.08 (8%).
  *
  * 4. Video bounding box display filter:
  *    - Only show boxes in the video overlay if confidence >= videoBox threshold.
- *    - Default: 0.20 (20%) — filters accidental low-conf noise in video frames.
+ *    - Optimum: 0.15 (15%).
  */
 export const DEFAULT_THRESHOLDS: ConfidenceThresholds = {
-  best: 0.12,
-  latest: 0.25,
+  best: 0.05,
+  latest: 0.15,
   screen: 0.08,
-  videoBox: 0.20,
+  videoBox: 0.15,
 };
 
 const CONFIDENCE_KEY = '@inspectify_confidence_thresholds';

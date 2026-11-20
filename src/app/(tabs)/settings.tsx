@@ -501,7 +501,7 @@ export default function SettingsScreen() {
                           label="Detection threshold"
                           sublabel="Min confidence to flag a packaging defect"
                           defaultValue={DEFAULT_THRESHOLDS.best}
-                          min={0.05} max={0.90} step={0.01}
+                          min={0.03} max={0.90} step={0.01}
                           accentColor="#FF2D55"
                           onChange={(v) => handleThresholdChange('best', v)}
                         />
