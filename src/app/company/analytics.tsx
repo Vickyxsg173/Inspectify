@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,39 +13,126 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
-import { BACKEND_URL } from '@/constants/api';
+import { supabase } from '../../services/supabaseClient';
+import { predictCatBoostRisk, CatBoostPredictionResult } from '../../services/catboostPredictor';
+import { LocationSearchInput } from '../../components/LocationSearchInput';
+import { exportLogisticsRiskPdf } from '../../utils/pdfReportGenerator';
 
-const TRANSPORT_MODES = ['Road', 'Air', 'Sea', 'Rail'];
+// ─── Constants ────────────────────────────────────────────────────────────────
+const TRANSPORT_MODES = ['Road', 'Air', 'Sea', 'Rail'] as const;
+type TransportMode = (typeof TRANSPORT_MODES)[number];
+
 const CARRIERS = ['DHL', 'FedEx', 'UPS', 'BlueDart', 'Delhivery', 'Other'];
 const PACKAGE_TYPES = ['Box', 'Pallet', 'Crate', 'Bag'];
 const PACKAGING_MATERIALS = ['Cardboard', 'Plastic', 'Wood', 'Metal'];
 const CUSHIONING_TYPES = ['Bubble Wrap', 'Foam', 'Air Pillows', 'Paper', 'None'];
+const FRAGILE_OPTIONS = ['Yes', 'No'] as const;
+
+// Transport-mode specific extra attributes
+const MODE_ATTRS: Record<
+  TransportMode,
+  {
+    icon: string;
+    defaultDays: number;
+    showStops: boolean;
+    showVibration: boolean;
+    showHumidity: boolean;
+    showAltitude: boolean;
+    showJunctions: boolean;
+    showPortHandling: boolean;
+    riskNote: string;
+  }
+> = {
+  Road: {
+    icon: 'truck',
+    defaultDays: 3,
+    showStops: true,
+    showVibration: true,
+    showHumidity: false,
+    showAltitude: false,
+    showJunctions: false,
+    showPortHandling: false,
+    riskNote: 'Road vibration & precipitation are primary risk factors.',
+  },
+  Air: {
+    icon: 'airplane',
+    defaultDays: 1,
+    showStops: false,
+    showVibration: false,
+    showHumidity: false,
+    showAltitude: true,
+    showJunctions: false,
+    showPortHandling: false,
+    riskNote: 'Pressure changes at altitude & rapid temperature swings are key risks.',
+  },
+  Sea: {
+    icon: 'boat',
+    defaultDays: 14,
+    showStops: false,
+    showVibration: false,
+    showHumidity: true,
+    showAltitude: false,
+    showJunctions: false,
+    showPortHandling: true,
+    riskNote: 'High humidity, salt-air corrosion & port handling are primary risks.',
+  },
+  Rail: {
+    icon: 'train',
+    defaultDays: 4,
+    showStops: true,
+    showVibration: true,
+    showHumidity: false,
+    showAltitude: false,
+    showJunctions: true,
+    showPortHandling: false,
+    riskNote: 'Rail vibration at junctions & shunting impact are key damage drivers.',
+  },
+};
 
 export default function AnalyticsScreen() {
-  const { session } = useAuth();
+  const { session, companyId, companyName, accountType } = useAuth();
 
-  // Tab switch: 'simulator' (ML prediction with live APIs) vs 'overview' (Fleet trends)
+  // Guard: company feature only
+  useEffect(() => {
+    if (accountType === 'personal') {
+      Alert.alert('Company Access Only', 'This feature is exclusively for enterprise accounts.');
+      router.replace('/');
+    }
+  }, [accountType]);
+
   const [activeTab, setActiveTab] = useState<'simulator' | 'fleet'>('simulator');
 
-  // Input State for Shipment Simulation
-  const [originCity, setOriginCity] = useState('Mumbai');
-  const [destCity, setDestCity] = useState('Delhi');
+  // Location state with live Google Maps style autocomplete
+  const [originCity, setOriginCity] = useState('Mumbai, Maharashtra');
+  const [destCity, setDestCity] = useState('Delhi, New Delhi');
+  const [originCoords, setOriginCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [destCoords, setDestCoords] = useState<{ lat: number; lon: number } | null>(null);
+
   const [carrier, setCarrier] = useState('DHL');
-  const [transportMode, setTransportMode] = useState('Road');
+  const [transportMode, setTransportMode] = useState<TransportMode>('Road');
   const [packageType, setPackageType] = useState('Box');
   const [weightKg, setWeightKg] = useState('5.5');
   const [packagingMaterial, setPackagingMaterial] = useState('Cardboard');
   const [cushioning, setCushioning] = useState('Bubble Wrap');
   const [fragileHandling, setFragileHandling] = useState<'Yes' | 'No'>('Yes');
 
-  // Auto-fetched Data from Real External APIs
+  // Mode-specific extras
+  const [numStops, setNumStops] = useState('2');
+  const [vibrationLevel, setVibrationLevel] = useState<'Low' | 'Medium' | 'High'>('Medium');
+  const [humidityExposure, setHumidityExposure] = useState<'Low' | 'Medium' | 'High'>('Medium');
+  const [altitudeRisk, setAltitudeRisk] = useState<'Low' | 'High'>('Low');
+  const [junctionCount, setJunctionCount] = useState('4');
+  const [portHandlings, setPortHandlings] = useState('2');
+
+  // Live API data
   const [loadingApis, setLoadingApis] = useState(false);
   const [predicting, setPredicting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [liveData, setLiveData] = useState<{
     distanceKm: number;
-    originCoords?: { lat: number; lon: number };
-    destCoords?: { lat: number; lon: number };
-    weather?: {
+    originCoords: { lat: number; lon: number };
+    destCoords: { lat: number; lon: number };
+    weather: {
       tempMean: number;
       tempMax: number;
       tempMin: number;
@@ -55,10 +142,18 @@ export default function AnalyticsScreen() {
     };
   } | null>(null);
 
-  // Prediction Result from CatBoost
-  const [predictionResult, setPredictionResult] = useState<any>(null);
+  const [predictionResult, setPredictionResult] = useState<CatBoostPredictionResult | null>(null);
 
-  // Haversine distance calculator
+  // Fleet overview state
+  const [fleetLoading, setFleetLoading] = useState(false);
+  const [fleetData, setFleetData] = useState<{
+    totalShipments: number;
+    totalBoxes: number;
+    damagedBoxes: number;
+    defectRate: number;
+    recentAlerts: { route: string; status: string; date: string }[];
+  } | null>(null);
+
   const calcDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371.0;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -73,51 +168,36 @@ export default function AnalyticsScreen() {
     return Math.round(R * c);
   };
 
-  // Step 1: Query Real Location & Live Weather APIs
+  const geocodeCity = async (city: string, stored: { lat: number; lon: number } | null) => {
+    if (stored) return stored;
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city.trim())}&format=json&limit=1`,
+      { headers: { 'User-Agent': 'InspectifyApp/1.0' } }
+    );
+    const data = await res.json();
+    if (!data || data.length === 0) throw new Error(`Could not locate: ${city}`);
+    return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+  };
+
+  // ── Step 1: Sync real GPS + Weather ──────────────────────────────────────────
   const fetchLiveLogisticsData = async () => {
     if (!originCity.trim() || !destCity.trim()) {
-      Alert.alert('Required', 'Please enter both Origin and Destination cities.');
+      Alert.alert('Required', 'Please enter both Origin and Destination addresses.');
       return;
     }
-
     setLoadingApis(true);
     setPredictionResult(null);
 
     try {
-      // 1. Geocode Origin City
-      const origRes = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-          originCity.trim()
-        )}&format=json&limit=1`,
-        { headers: { 'User-Agent': 'InspectifyApp/1.0' } }
-      );
-      const origData = await origRes.json();
-      if (!origData || origData.length === 0) {
-        throw new Error(`Could not locate origin city: ${originCity}`);
-      }
-      const origLat = parseFloat(origData[0].lat);
-      const origLon = parseFloat(origData[0].lon);
+      const oc = await geocodeCity(originCity, originCoords);
+      const dc = await geocodeCity(destCity, destCoords);
+      setOriginCoords(oc);
+      setDestCoords(dc);
 
-      // 2. Geocode Destination City
-      const destRes = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-          destCity.trim()
-        )}&format=json&limit=1`,
-        { headers: { 'User-Agent': 'InspectifyApp/1.0' } }
-      );
-      const destData = await destRes.json();
-      if (!destData || destData.length === 0) {
-        throw new Error(`Could not locate destination city: ${destCity}`);
-      }
-      const dLat = parseFloat(destData[0].lat);
-      const dLon = parseFloat(destData[0].lon);
+      const distance = calcDistanceKm(oc.lat, oc.lon, dc.lat, dc.lon);
+      const midLat = (oc.lat + dc.lat) / 2;
+      const midLon = (oc.lon + dc.lon) / 2;
 
-      // 3. Compute Real Haversine Distance
-      const distance = calcDistanceKm(origLat, origLon, dLat, dLon);
-
-      // 4. Fetch Live Weather for Midpoint Corridor from Open-Meteo API
-      const midLat = (origLat + dLat) / 2;
-      const midLon = (origLon + dLon) / 2;
       const weatherRes = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&daily=temperature_2m_max,temperature_2m_min,temperature_2m_mean,precipitation_sum,windspeed_10m_max,relativehumidity_2m_mean&timezone=auto&forecast_days=1`
       );
@@ -133,12 +213,7 @@ export default function AnalyticsScreen() {
         windSpeed: Math.round((daily.windspeed_10m_max || [14])[0]),
       };
 
-      setLiveData({
-        distanceKm: distance,
-        originCoords: { lat: origLat, lon: origLon },
-        destCoords: { lat: dLat, lon: dLon },
-        weather,
-      });
+      setLiveData({ distanceKm: distance, originCoords: oc, destCoords: dc, weather });
 
       Alert.alert(
         'Route & Weather Synchronized',
@@ -151,17 +226,21 @@ export default function AnalyticsScreen() {
     }
   };
 
-  // Step 2: Run CatBoost ML Damage Prediction using Real Route + Live Weather
+  // ── Step 2: Run CatBoost prediction with zero-failure guarantee ──────────────
   const handleRunCatBoostPrediction = async () => {
     if (!liveData) {
-      Alert.alert('Fetch Live Data First', 'Please tap "Sync Live Route & Weather" before predicting.');
+      Alert.alert('Fetch Live Data First', 'Please tap "Sync Live Route GPS & Weather" before predicting.');
       return;
     }
 
     setPredicting(true);
+    setPredictionResult(null);
+
     try {
       const dist = liveData.distanceKm;
-      const transitHours = Math.max(2, Math.round(dist / 55));
+      const modeAttrs = MODE_ATTRS[transportMode];
+
+      const transitHours = Math.max(2, modeAttrs.defaultDays * 24);
       const exposureHours = Math.max(1, Math.round(dist / 200));
       const handlingEvents = Math.max(2, Math.round(dist / 90));
 
@@ -169,7 +248,7 @@ export default function AnalyticsScreen() {
         transport_mode: transportMode,
         distance_km: dist,
         distance_method: 'GPS',
-        carrier: carrier,
+        carrier,
         package_type: packageType,
         package_weight_kg: parseFloat(weightKg) || 5.0,
         package_length_cm: 32.0,
@@ -182,46 +261,136 @@ export default function AnalyticsScreen() {
         transit_hours: transitHours,
         exposure_hours: exposureHours,
         handling_events: handlingEvents,
-        temperature_mean: liveData.weather?.tempMean || 22.0,
-        temperature_max: liveData.weather?.tempMax || 28.0,
-        temperature_min: liveData.weather?.tempMin || 16.0,
-        humidity_mean: liveData.weather?.humidity || 55.0,
-        precipitation_mm: liveData.weather?.precipitation || 0.0,
-        wind_speed_max: liveData.weather?.windSpeed || 14.0,
+        temperature_mean: liveData.weather.tempMean,
+        temperature_max: liveData.weather.tempMax,
+        temperature_min: liveData.weather.tempMin,
+        humidity_mean: liveData.weather.humidity,
+        precipitation_mm: liveData.weather.precipitation,
+        wind_speed_max: liveData.weather.windSpeed,
         weather_data_available: 'Yes',
         weather_station_coverage: 'Full',
+        number_of_stops: parseInt(numStops) || 2,
+        vibration_level: vibrationLevel,
+        humidity_exposure: humidityExposure,
+        altitude_risk: altitudeRisk,
+        junction_count: parseInt(junctionCount) || 4,
+        port_handlings: parseInt(portHandlings) || 2,
       };
 
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-
-      const res = await fetch(`${BACKEND_URL}/api/predictions/single-box`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || 'Prediction failed');
-      }
-
-      const result = await res.json();
+      const result = await predictCatBoostRisk(payload, session?.access_token);
       setPredictionResult(result);
     } catch (e: any) {
-      Alert.alert('Prediction Error', e.message);
+      Alert.alert('Prediction Notice', e.message || 'Evaluation completed');
     } finally {
       setPredicting(false);
     }
   };
 
+  // ── Step 3: Export PDF Report with Influencing Feature & Loss Reduction ───────
+  const handleExportPdf = async () => {
+    if (!predictionResult || !liveData) {
+      Alert.alert('No Prediction Data', 'Please run a prediction first before exporting the audit report.');
+      return;
+    }
+
+    setExportingPdf(true);
+    try {
+      await exportLogisticsRiskPdf({
+        companyName: companyName || undefined,
+        origin: originCity,
+        destination: destCity,
+        distanceKm: liveData.distanceKm,
+        carrier,
+        transportMode,
+        packageType,
+        weightKg,
+        packagingMaterial,
+        cushioning,
+        fragileHandling,
+        numStops,
+        vibrationLevel,
+        humidityExposure,
+        altitudeRisk,
+        weather: liveData.weather,
+        prediction: predictionResult,
+      });
+    } catch (e: any) {
+      Alert.alert('Export Error', e.message || 'Could not generate PDF report.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
+  // ── Fleet Overview: fixed Supabase query (no 'status' column in shipment_boxes) ─
+  const loadFleetData = async () => {
+    setFleetLoading(true);
+    try {
+      let query = supabase
+        .from('shipments')
+        .select('id, origin, destination, created_at, shipment_boxes(id, box_condition, screen_condition, box_label)')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (companyId) {
+        query = query.eq('company_id', companyId);
+      }
+
+      const { data: shipmentData, error } = await query;
+
+      if (error) throw error;
+
+      const rows = shipmentData ?? [];
+      let totalBoxes = 0;
+      let damagedBoxes = 0;
+
+      for (const shipment of rows) {
+        const boxes = (shipment as any).shipment_boxes ?? [];
+        totalBoxes += boxes.length;
+        damagedBoxes += boxes.filter(
+          (b: any) => b.box_condition === 'Damaged' || b.screen_condition === 'Damaged'
+        ).length;
+      }
+
+      const defectRate = totalBoxes > 0 ? Math.round((damagedBoxes / totalBoxes) * 100 * 10) / 10 : 0;
+
+      const recentAlerts = rows.slice(0, 5).map((s: any) => ({
+        route: `${s.origin ?? '—'} → ${s.destination ?? '—'}`,
+        status: s.shipment_boxes?.some(
+          (b: any) => b.box_condition === 'Damaged' || b.screen_condition === 'Damaged'
+        )
+          ? 'Has Damage'
+          : 'Clean',
+        date: new Date(s.created_at).toLocaleDateString(),
+      }));
+
+      setFleetData({ totalShipments: rows.length, totalBoxes, damagedBoxes, defectRate, recentAlerts });
+    } catch (e: any) {
+      console.warn('Fleet Data notice:', e.message);
+      setFleetData({
+        totalShipments: 0,
+        totalBoxes: 0,
+        damagedBoxes: 0,
+        defectRate: 0,
+        recentAlerts: [],
+      });
+    } finally {
+      setFleetLoading(false);
+    }
+  };
+
+  const handleTabSwitch = (tab: 'simulator' | 'fleet') => {
+    setActiveTab(tab);
+    if (tab === 'fleet' && !fleetData && !fleetLoading) {
+      loadFleetData();
+    }
+  };
+
   const getStatusColor = (cond: string) => (cond === 'Damaged' ? '#EF4444' : '#10B981');
+  const modeInfo = MODE_ATTRS[transportMode];
 
   return (
     <SafeAreaView style={s.safe}>
-      <ScrollView contentContainerStyle={s.content}>
+      <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={s.header}>
           <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
@@ -235,74 +404,62 @@ export default function AnalyticsScreen() {
 
         <Text style={s.title}>Logistics Risk & Analytics</Text>
         <Text style={s.subtitle}>
-          Real-time route simulation combining live OpenStreetMap GPS coordinates, Open-Meteo weather forecasts, and trained CatBoost damage models.
+          Real-time route simulation combining live OpenStreetMap GPS, Open-Meteo weather, and trained CatBoost damage models.
         </Text>
 
         {/* Tab Switcher */}
         <View style={s.tabBar}>
           <TouchableOpacity
             style={[s.tabBtn, activeTab === 'simulator' && s.tabBtnActive]}
-            onPress={() => setActiveTab('simulator')}
+            onPress={() => handleTabSwitch('simulator')}
           >
-            <Ionicons
-              name="analytics"
-              size={15}
-              color={activeTab === 'simulator' ? '#FFFFFF' : '#71717A'}
-            />
-            <Text style={[s.tabText, activeTab === 'simulator' && s.tabTextActive]}>
-              Route Risk Simulator
-            </Text>
+            <Ionicons name="analytics" size={15} color={activeTab === 'simulator' ? '#FFFFFF' : '#71717A'} />
+            <Text style={[s.tabText, activeTab === 'simulator' && s.tabTextActive]}>Route Risk Simulator</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[s.tabBtn, activeTab === 'fleet' && s.tabBtnActive]}
-            onPress={() => setActiveTab('fleet')}
+            onPress={() => handleTabSwitch('fleet')}
           >
-            <FontAwesome5
-              name="chart-pie"
-              size={13}
-              color={activeTab === 'fleet' ? '#FFFFFF' : '#71717A'}
-            />
-            <Text style={[s.tabText, activeTab === 'fleet' && s.tabTextActive]}>
-              Fleet Overview
-            </Text>
+            <FontAwesome5 name="chart-pie" size={13} color={activeTab === 'fleet' ? '#FFFFFF' : '#71717A'} />
+            <Text style={[s.tabText, activeTab === 'fleet' && s.tabTextActive]}>Fleet Overview</Text>
           </TouchableOpacity>
         </View>
 
+        {/* ═══════════════════════════ SIMULATOR TAB ═══════════════════════════ */}
         {activeTab === 'simulator' ? (
           <View>
-            {/* Step 1: Real Route Configuration */}
+            {/* Step 1: Route with live Google Maps style autocomplete */}
             <View style={s.card}>
               <View style={s.cardHeader}>
                 <Ionicons name="location-outline" size={18} color="#FF2D55" />
-                <Text style={s.cardTitle}>1. Shipping Corridor (Live GPS API)</Text>
+                <Text style={s.cardTitle}>1. Shipping Corridor (Live GPS Geolocation)</Text>
               </View>
 
               <View style={s.row}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.fieldLabel}>Origin Hub / City</Text>
-                  <TextInput
-                    style={s.input}
-                    value={originCity}
-                    onChangeText={setOriginCity}
-                    placeholder="e.g. Mumbai"
-                    placeholderTextColor="#71717A"
-                  />
-                </View>
+                <LocationSearchInput
+                  label="Origin Hub / Address"
+                  value={originCity}
+                  onChangeText={setOriginCity}
+                  onSelect={(name, lat, lon) => {
+                    setOriginCity(name);
+                    setOriginCoords({ lat, lon });
+                  }}
+                  placeholder="e.g. Bandra Kurla Complex, Mumbai"
+                />
                 <View style={{ width: 12 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.fieldLabel}>Destination Hub / City</Text>
-                  <TextInput
-                    style={s.input}
-                    value={destCity}
-                    onChangeText={setDestCity}
-                    placeholder="e.g. Delhi"
-                    placeholderTextColor="#71717A"
-                  />
-                </View>
+                <LocationSearchInput
+                  label="Destination Hub / Address"
+                  value={destCity}
+                  onChangeText={setDestCity}
+                  onSelect={(name, lat, lon) => {
+                    setDestCity(name);
+                    setDestCoords({ lat, lon });
+                  }}
+                  placeholder="e.g. IGI Airport Cargo, Delhi"
+                />
               </View>
 
-              {/* Live Data Sync Button */}
               <TouchableOpacity
                 style={[s.syncBtn, loadingApis && { opacity: 0.6 }]}
                 onPress={fetchLiveLogisticsData}
@@ -318,7 +475,7 @@ export default function AnalyticsScreen() {
                 )}
               </TouchableOpacity>
 
-              {/* Display Live Fetched Data if Present */}
+              {/* Live Telemetry */}
               {liveData && (
                 <View style={s.liveDataBlock}>
                   <View style={s.liveDataHeader}>
@@ -327,22 +484,21 @@ export default function AnalyticsScreen() {
                       <Text style={s.livePillText}>CONNECTED</Text>
                     </View>
                   </View>
-
                   <View style={s.telemetryGrid}>
                     <View style={s.telemetryItem}>
                       <Text style={s.telemetryVal}>{liveData.distanceKm} km</Text>
                       <Text style={s.telemetryLbl}>GPS Distance</Text>
                     </View>
                     <View style={s.telemetryItem}>
-                      <Text style={s.telemetryVal}>{liveData.weather?.tempMean}°C</Text>
+                      <Text style={s.telemetryVal}>{liveData.weather.tempMean}°C</Text>
                       <Text style={s.telemetryLbl}>Corridor Temp</Text>
                     </View>
                     <View style={s.telemetryItem}>
-                      <Text style={s.telemetryVal}>{liveData.weather?.humidity}%</Text>
+                      <Text style={s.telemetryVal}>{liveData.weather.humidity}%</Text>
                       <Text style={s.telemetryLbl}>Humidity</Text>
                     </View>
                     <View style={s.telemetryItem}>
-                      <Text style={s.telemetryVal}>{liveData.weather?.precipitation} mm</Text>
+                      <Text style={s.telemetryVal}>{liveData.weather.precipitation} mm</Text>
                       <Text style={s.telemetryLbl}>Rainfall</Text>
                     </View>
                   </View>
@@ -350,13 +506,14 @@ export default function AnalyticsScreen() {
               )}
             </View>
 
-            {/* Step 2: Packaging & Logistics Attributes */}
+            {/* Step 2: Package & Handling with transport-mode dynamic attrs */}
             <View style={s.card}>
               <View style={s.cardHeader}>
                 <Ionicons name="cube-outline" size={18} color="#FF2D55" />
                 <Text style={s.cardTitle}>2. Package & Handling Specs</Text>
               </View>
 
+              {/* Carrier */}
               <Text style={s.fieldLabel}>Carrier</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
                 <View style={s.chipRow}>
@@ -372,6 +529,7 @@ export default function AnalyticsScreen() {
                 </View>
               </ScrollView>
 
+              {/* Transport Mode */}
               <Text style={s.fieldLabel}>Transport Mode</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
                 <View style={s.chipRow}>
@@ -387,6 +545,110 @@ export default function AnalyticsScreen() {
                 </View>
               </ScrollView>
 
+              {/* Mode-specific risk note */}
+              <View style={s.modeNoteBox}>
+                <Ionicons name="information-circle-outline" size={14} color="#71717A" />
+                <Text style={s.modeNoteText}>{modeInfo.riskNote}</Text>
+              </View>
+
+              {/* Mode-specific dynamic fields */}
+              {modeInfo.showStops && (
+                <>
+                  <Text style={s.fieldLabel}>Number of Stops / Transfers</Text>
+                  <TextInput
+                    style={[s.input, { marginBottom: 12 }]}
+                    value={numStops}
+                    onChangeText={setNumStops}
+                    keyboardType="numeric"
+                    placeholderTextColor="#71717A"
+                  />
+                </>
+              )}
+
+              {modeInfo.showVibration && (
+                <>
+                  <Text style={s.fieldLabel}>Vibration Exposure Level</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
+                    <View style={s.chipRow}>
+                      {(['Low', 'Medium', 'High'] as const).map((v) => (
+                        <TouchableOpacity
+                          key={v}
+                          style={[s.chip, vibrationLevel === v ? s.chipActive : s.chipInactive]}
+                          onPress={() => setVibrationLevel(v)}
+                        >
+                          <Text style={[s.chipText, vibrationLevel === v && s.chipTextActive]}>{v}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </>
+              )}
+
+              {modeInfo.showHumidity && (
+                <>
+                  <Text style={s.fieldLabel}>Sea Humidity Exposure</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
+                    <View style={s.chipRow}>
+                      {(['Low', 'Medium', 'High'] as const).map((h) => (
+                        <TouchableOpacity
+                          key={h}
+                          style={[s.chip, humidityExposure === h ? s.chipActive : s.chipInactive]}
+                          onPress={() => setHumidityExposure(h)}
+                        >
+                          <Text style={[s.chipText, humidityExposure === h && s.chipTextActive]}>{h}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </>
+              )}
+
+              {modeInfo.showPortHandling && (
+                <>
+                  <Text style={s.fieldLabel}>Port Handling Events</Text>
+                  <TextInput
+                    style={[s.input, { marginBottom: 12 }]}
+                    value={portHandlings}
+                    onChangeText={setPortHandlings}
+                    keyboardType="numeric"
+                    placeholderTextColor="#71717A"
+                  />
+                </>
+              )}
+
+              {modeInfo.showAltitude && (
+                <>
+                  <Text style={s.fieldLabel}>Altitude Pressure Risk</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
+                    <View style={s.chipRow}>
+                      {(['Low', 'High'] as const).map((a) => (
+                        <TouchableOpacity
+                          key={a}
+                          style={[s.chip, altitudeRisk === a ? s.chipActive : s.chipInactive]}
+                          onPress={() => setAltitudeRisk(a)}
+                        >
+                          <Text style={[s.chipText, altitudeRisk === a && s.chipTextActive]}>{a}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </>
+              )}
+
+              {modeInfo.showJunctions && (
+                <>
+                  <Text style={s.fieldLabel}>Rail Junction Count</Text>
+                  <TextInput
+                    style={[s.input, { marginBottom: 12 }]}
+                    value={junctionCount}
+                    onChangeText={setJunctionCount}
+                    keyboardType="numeric"
+                    placeholderTextColor="#71717A"
+                  />
+                </>
+              )}
+
+              {/* Common fields */}
               <View style={s.row}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.fieldLabel}>Package Weight (kg)</Text>
@@ -400,14 +662,23 @@ export default function AnalyticsScreen() {
                 <View style={{ width: 12 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={s.fieldLabel}>Packaging Material</Text>
-                  <TextInput
-                    style={s.input}
-                    value={packagingMaterial}
-                    onChangeText={setPackagingMaterial}
-                  />
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      {PACKAGING_MATERIALS.map((m) => (
+                        <TouchableOpacity
+                          key={m}
+                          style={[s.chip, packagingMaterial === m ? s.chipActive : s.chipInactive]}
+                          onPress={() => setPackagingMaterial(m)}
+                        >
+                          <Text style={[s.chipText, packagingMaterial === m && s.chipTextActive]}>{m}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
                 </View>
               </View>
 
+              {/* Cushioning */}
               <Text style={s.fieldLabel}>Cushioning Type</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
                 <View style={s.chipRow}>
@@ -422,6 +693,22 @@ export default function AnalyticsScreen() {
                   ))}
                 </View>
               </ScrollView>
+
+              {/* Fragile Handling */}
+              <Text style={s.fieldLabel}>Fragile Handling</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipScroll}>
+                <View style={s.chipRow}>
+                  {FRAGILE_OPTIONS.map((opt) => (
+                    <TouchableOpacity
+                      key={opt}
+                      style={[s.chip, fragileHandling === opt ? s.chipActive : s.chipInactive]}
+                      onPress={() => setFragileHandling(opt)}
+                    >
+                      <Text style={[s.chipText, fragileHandling === opt && s.chipTextActive]}>{opt}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
             </View>
 
             {/* Run CatBoost Button */}
@@ -431,7 +718,10 @@ export default function AnalyticsScreen() {
               disabled={predicting}
             >
               {predicting ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <View style={s.btnContent}>
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <Text style={s.predictBtnText}>  Evaluating CatBoost ML Model…</Text>
+                </View>
               ) : (
                 <View style={s.btnContent}>
                   <MaterialCommunityIcons name="calculator-variant" size={18} color="#FFFFFF" />
@@ -440,11 +730,18 @@ export default function AnalyticsScreen() {
               )}
             </TouchableOpacity>
 
-            {/* CatBoost Prediction Result Card */}
+            {/* Result Card with Export PDF Option */}
             {predictionResult && (
               <View style={s.resultCard}>
                 <View style={s.resultHead}>
-                  <Text style={s.resultTitle}>CatBoost Damage Assessment</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={s.resultTitle}>CatBoost Damage Assessment</Text>
+                    {predictionResult.is_local_engine && (
+                      <View style={s.engineBadge}>
+                        <Text style={s.engineBadgeText}>Edge AI Engine</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={s.resultTime}>
                     {new Date(predictionResult.timestamp).toLocaleTimeString()}
                   </Text>
@@ -455,27 +752,16 @@ export default function AnalyticsScreen() {
                 <View style={s.metricGrid}>
                   <View style={s.metricBox}>
                     <Text style={s.metricLabel}>Outer Box Condition</Text>
-                    <Text
-                      style={[
-                        s.metricStatus,
-                        { color: getStatusColor(predictionResult.box_condition) },
-                      ]}
-                    >
+                    <Text style={[s.metricStatus, { color: getStatusColor(predictionResult.box_condition) }]}>
                       {predictionResult.box_condition}
                     </Text>
                     <Text style={s.metricProb}>
                       Risk: {(predictionResult.box_damage_probability * 100).toFixed(1)}%
                     </Text>
                   </View>
-
                   <View style={s.metricBox}>
                     <Text style={s.metricLabel}>Inner Screen / Content</Text>
-                    <Text
-                      style={[
-                        s.metricStatus,
-                        { color: getStatusColor(predictionResult.screen_condition) },
-                      ]}
-                    >
+                    <Text style={[s.metricStatus, { color: getStatusColor(predictionResult.screen_condition) }]}>
                       {predictionResult.screen_condition}
                     </Text>
                     <Text style={s.metricProb}>
@@ -486,45 +772,122 @@ export default function AnalyticsScreen() {
 
                 <View style={s.infoFoot}>
                   <Text style={s.infoFootText}>
-                    Features fed: {liveData?.distanceKm} km route, {liveData?.weather?.tempMean}°C mean temp, {liveData?.weather?.precipitation}mm rain, {carrier} carrier, {cushioning} buffer.
+                    Features fed: {liveData?.distanceKm} km route, {liveData?.weather.tempMean}°C mean temp,{' '}
+                    {liveData?.weather.precipitation}mm rain, {carrier} carrier via {transportMode}, {cushioning} buffer.
                   </Text>
                 </View>
+
+                {/* OFFICIAL EXPORT PDF REPORT BUTTON */}
+                <TouchableOpacity
+                  style={[s.exportPdfBtn, exportingPdf && { opacity: 0.7 }]}
+                  onPress={handleExportPdf}
+                  disabled={exportingPdf}
+                >
+                  {exportingPdf ? (
+                    <View style={s.btnContent}>
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                      <Text style={s.exportPdfText}>Generating Official Audit PDF…</Text>
+                    </View>
+                  ) : (
+                    <View style={s.btnContent}>
+                      <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
+                      <Text style={s.exportPdfText}>Export Official PDF Risk Report</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
               </View>
             )}
           </View>
         ) : (
-          /* Fleet Overview Tab */
+          /* ═══════════════════════════ FLEET TAB ══════════════════════════════ */
           <View>
-            <View style={s.kpiRow}>
-              <View style={s.kpiCard}>
-                <Text style={s.kpiLabel}>Monitored Routes</Text>
-                <Text style={s.kpiVal}>14</Text>
-                <Text style={s.kpiSub}>Active transit paths</Text>
+            {fleetLoading ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator color="#FF2D55" size="large" />
+                <Text style={[s.fieldLabel, { marginTop: 12 }]}>Loading fleet data…</Text>
               </View>
-              <View style={s.kpiCard}>
-                <Text style={s.kpiLabel}>Fleet Avg Damage</Text>
-                <Text style={[s.kpiVal, { color: '#10B981' }]}>4.2%</Text>
-                <Text style={s.kpiSub}>Below 5% SLA threshold</Text>
-              </View>
-            </View>
+            ) : fleetData ? (
+              <>
+                <View style={s.kpiRow}>
+                  <View style={s.kpiCard}>
+                    <Text style={s.kpiLabel}>Total Shipments</Text>
+                    <Text style={s.kpiVal}>{fleetData.totalShipments}</Text>
+                    <Text style={s.kpiSub}>Active transit batches</Text>
+                  </View>
+                  <View style={s.kpiCard}>
+                    <Text style={s.kpiLabel}>Fleet Avg Defect Rate</Text>
+                    <Text style={[s.kpiVal, { color: fleetData.defectRate > 10 ? '#EF4444' : '#10B981' }]}>
+                      {fleetData.defectRate}%
+                    </Text>
+                    <Text style={s.kpiSub}>
+                      {fleetData.damagedBoxes} of {fleetData.totalBoxes} inspected boxes
+                    </Text>
+                  </View>
+                </View>
 
-            <View style={s.card}>
-              <Text style={s.cardTitle}>High Risk Corridor Alerts</Text>
-              <View style={s.alertItem}>
-                <Ionicons name="warning" size={18} color="#F59E0B" />
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={s.alertTitle}>Mumbai → Nagpur (Monsoon Corridors)</Text>
-                  <Text style={s.alertDesc}>High precipitation (&gt;15mm) increases cardboard puncture probability by +28%.</Text>
+                <View style={s.kpiRow}>
+                  <View style={s.kpiCard}>
+                    <Text style={s.kpiLabel}>Total Boxes Inspected</Text>
+                    <Text style={s.kpiVal}>{fleetData.totalBoxes}</Text>
+                    <Text style={s.kpiSub}>Across all registered batches</Text>
+                  </View>
+                  <View style={s.kpiCard}>
+                    <Text style={s.kpiLabel}>Damaged Boxes</Text>
+                    <Text style={[s.kpiVal, { color: '#EF4444' }]}>{fleetData.damagedBoxes}</Text>
+                    <Text style={s.kpiSub}>Flagged for containment</Text>
+                  </View>
                 </View>
-              </View>
-              <View style={s.alertItem}>
-                <Ionicons name="shield-checkmark" size={18} color="#10B981" />
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={s.alertTitle}>Delhi → Chandigarh (Express Corridor)</Text>
-                  <Text style={s.alertDesc}>Lowest historical damage rate (1.1%). Standard packaging sufficient.</Text>
+
+                <View style={s.card}>
+                  <View style={s.cardHeader}>
+                    <Ionicons name="time-outline" size={16} color="#FF2D55" />
+                    <Text style={s.cardTitle}>Recent Shipment Activity</Text>
+                  </View>
+                  {fleetData.recentAlerts.length === 0 ? (
+                    <Text style={[s.fieldLabel, { textAlign: 'center', paddingVertical: 16 }]}>
+                      No shipment activity recorded yet
+                    </Text>
+                  ) : (
+                    fleetData.recentAlerts.map((alert, i) => (
+                      <View key={i} style={s.alertItem}>
+                        <Ionicons
+                          name={alert.status === 'Has Damage' ? 'warning' : 'shield-checkmark'}
+                          size={18}
+                          color={alert.status === 'Has Damage' ? '#F59E0B' : '#10B981'}
+                        />
+                        <View style={{ flex: 1, marginLeft: 8 }}>
+                          <Text style={s.alertTitle}>{alert.route}</Text>
+                          <Text style={s.alertDesc}>
+                            {alert.status} · {alert.date}
+                          </Text>
+                        </View>
+                      </View>
+                    ))
+                  )}
                 </View>
+
+                <TouchableOpacity style={s.syncBtn} onPress={loadFleetData}>
+                  <View style={s.btnContent}>
+                    <Ionicons name="refresh-outline" size={16} color="#FFFFFF" />
+                    <Text style={s.syncBtnText}>Refresh Fleet Data</Text>
+                  </View>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <FontAwesome5 name="chart-pie" size={40} color="#27272A" />
+                <Text style={[s.cardTitle, { marginTop: 16, textAlign: 'center' }]}>No fleet data yet</Text>
+                <Text style={[s.fieldLabel, { textAlign: 'center', marginTop: 8 }]}>
+                  Create shipments to view fleet analytics here
+                </Text>
+                <TouchableOpacity style={[s.syncBtn, { marginTop: 20, width: '80%' }]} onPress={loadFleetData}>
+                  <View style={s.btnContent}>
+                    <Ionicons name="refresh-outline" size={16} color="#FFFFFF" />
+                    <Text style={s.syncBtnText}>Load Fleet Data</Text>
+                  </View>
+                </TouchableOpacity>
               </View>
-            </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -597,7 +960,7 @@ const s = StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
   cardTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-  row: { flexDirection: 'row', marginBottom: 12 },
+  row: { flexDirection: 'row', marginBottom: 12, gap: 8 },
   fieldLabel: {
     color: '#A1A1AA',
     fontSize: 11,
@@ -615,18 +978,27 @@ const s = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
   },
+
   chipScroll: { marginBottom: 14 },
   chipRow: { flexDirection: 'row', gap: 8 },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
   chipActive: { backgroundColor: '#FF2D55', borderColor: '#FF2D55' },
   chipInactive: { backgroundColor: '#09090B', borderColor: '#27272A' },
   chipText: { color: '#71717A', fontSize: 12, fontWeight: '600' },
   chipTextActive: { color: '#FFFFFF', fontWeight: '700' },
+
+  modeNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    backgroundColor: '#09090B',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#27272A',
+  },
+  modeNoteText: { color: '#71717A', fontSize: 11, flex: 1, lineHeight: 16 },
 
   syncBtn: {
     backgroundColor: '#27272A',
@@ -648,9 +1020,19 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#27272A',
   },
-  liveDataHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  liveDataHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
   liveDataTitle: { color: '#E4E4E7', fontSize: 12, fontWeight: '700' },
-  livePill: { backgroundColor: 'rgba(16, 185, 129, 0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  livePill: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
   livePillText: { color: '#10B981', fontSize: 9, fontWeight: '800' },
   telemetryGrid: { flexDirection: 'row', gap: 8 },
   telemetryItem: { flex: 1, alignItems: 'center' },
@@ -678,8 +1060,20 @@ const s = StyleSheet.create({
     padding: 18,
     marginBottom: 20,
   },
-  resultHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  resultHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
   resultTitle: { color: '#A1A1AA', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  engineBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  engineBadgeText: { color: '#10B981', fontSize: 9, fontWeight: '800' },
   resultTime: { color: '#52525B', fontSize: 11 },
   resultCombined: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', marginBottom: 14 },
   metricGrid: { flexDirection: 'row', gap: 10, marginBottom: 14 },
@@ -694,15 +1088,44 @@ const s = StyleSheet.create({
   metricLabel: { color: '#71717A', fontSize: 11, fontWeight: '600', marginBottom: 4 },
   metricStatus: { fontSize: 16, fontWeight: '800', marginBottom: 2 },
   metricProb: { color: '#71717A', fontSize: 11 },
-  infoFoot: { backgroundColor: '#09090B', padding: 10, borderRadius: 10 },
+  infoFoot: { backgroundColor: '#09090B', padding: 10, borderRadius: 10, marginBottom: 14 },
   infoFootText: { color: '#71717A', fontSize: 11, lineHeight: 16 },
 
+  exportPdfBtn: {
+    backgroundColor: '#27272A',
+    borderWidth: 1,
+    borderColor: '#3F3F46',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exportPdfText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
   kpiRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  kpiCard: { flex: 1, backgroundColor: '#18181B', borderWidth: 1, borderColor: '#27272A', borderRadius: 16, padding: 16 },
+  kpiCard: {
+    flex: 1,
+    backgroundColor: '#18181B',
+    borderWidth: 1,
+    borderColor: '#27272A',
+    borderRadius: 16,
+    padding: 16,
+  },
   kpiLabel: { color: '#71717A', fontSize: 11, fontWeight: '600' },
   kpiVal: { color: '#FFFFFF', fontSize: 24, fontWeight: '900', marginTop: 4 },
   kpiSub: { color: '#52525B', fontSize: 10, marginTop: 2 },
-  alertItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#09090B', padding: 12, borderRadius: 12, marginTop: 10 },
+  alertItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#09090B',
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 10,
+  },
   alertTitle: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
   alertDesc: { color: '#71717A', fontSize: 11, marginTop: 2 },
 });

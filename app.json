@@ -1,14 +1,15 @@
 {
   "expo": {
-    "name": "yolo_mobile_app",
-    "slug": "yolo_mobile_app",
+    "name": "Inspectify",
+    "slug": "inspectify-defect-detection",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "yolomobileapp",
-    "userInterfaceStyle": "automatic",
+    "scheme": "inspectify",
+    "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vicky.inspectify",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Inspectify uses your location to fetch real-time weather and calculate shipping distances for damage risk prediction.",
         "NSCameraUsageDescription": "Inspectify uses the camera to scan package condition for AI damage risk assessment.",
@@ -16,8 +17,10 @@
       }
     },
     "android": {
+      "package": "com.vicky.inspectify",
+      "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#09090B",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -39,7 +42,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#09090B",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
