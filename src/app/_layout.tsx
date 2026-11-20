@@ -3,8 +3,13 @@ import './global.css';
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { StyleSheet } from 'nativewind';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+
+try {
+  (StyleSheet as any).setFlag?.('darkMode', 'class');
+} catch (_e) {}
 
 function RootNavigationStack() {
   const { session, isLoading } = useAuth();

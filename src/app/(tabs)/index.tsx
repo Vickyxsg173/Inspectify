@@ -10,14 +10,10 @@ import {
   ArrowRight,
   ShieldCheck,
   Truck,
-  Layers,
   Sparkles,
   BarChart3,
   CalendarCheck,
   PlusCircle,
-  HelpCircle,
-  QrCode,
-  Scan,
 } from 'lucide-react-native';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { getRecentScans, ScanRecord, formatRelativeTime } from '@/utils/scanStorage';
@@ -159,7 +155,7 @@ export default function HomeScreen() {
 
             {/* Company Direct Navigation Cards */}
             <View className="flex-row gap-2.5 mb-2.5">
-              {/* Shipment Analytics with Real GPS + Live Open-Meteo */}
+              {/* Shipment Analytics with Real GPS */}
               <Pressable
                 onPress={() => router.push('/company/analytics' as any)}
                 className="flex-1 bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 active:opacity-80"
@@ -169,7 +165,7 @@ export default function HomeScreen() {
                 </View>
                 <Text className="text-sm font-bold text-black dark:text-white">Route Analytics</Text>
                 <Text className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Live GPS distance & weather corridor CatBoost simulation
+                  Corridor routing and weather-based transit simulation
                 </Text>
               </Pressable>
 
@@ -183,7 +179,7 @@ export default function HomeScreen() {
                 </View>
                 <Text className="text-sm font-bold text-black dark:text-white">Dispatch Optimizer</Text>
                 <Text className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Forecast multi-day weather to pick lowest risk dates
+                  Forecast multi-day weather windows to minimize dispatch risk
                 </Text>
               </Pressable>
             </View>
@@ -200,7 +196,7 @@ export default function HomeScreen() {
                 <View className="flex-1">
                   <Text className="text-xs font-bold text-black dark:text-white">Shipment Management</Text>
                   <Text className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5" numberOfLines={2}>
-                    View batches, scan package boxes, compute binomial failure probability
+                    Manage batches, inspect packages, and track delivery conditions
                   </Text>
                 </View>
               </View>
@@ -210,83 +206,6 @@ export default function HomeScreen() {
         )}
 
         {/* ========================================================================= */}
-        {/* DIRECT SHORTCUTS: Features that do not have dedicated bottom tabs         */}
-        {/* ========================================================================= */}
-        <View className="mb-6">
-          <Text className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-3">
-            Quick Action Tools
-          </Text>
-
-          <View className="gap-2.5">
-            {/* 1. AI ML Risk Evaluator (Direct to /predict) */}
-            <Pressable
-              onPress={() => router.push('/predict' as any)}
-              className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-red-500/25 flex-row items-center justify-between active:opacity-80 shadow-sm"
-            >
-              <View className="flex-row items-center gap-3.5 flex-1 pr-2">
-                <View className="w-11 h-11 rounded-xl bg-red-500/15 border border-red-500/30 items-center justify-center">
-                  <Layers size={22} color="#FF2D55" />
-                </View>
-                <View className="flex-1">
-                  <View className="flex-row items-center gap-2 flex-wrap">
-                    <Text className="text-base font-bold text-black dark:text-white">
-                      Instant Parcel Risk Evaluator
-                    </Text>
-                    <View className="bg-red-500/15 px-2 py-0.5 rounded-full">
-                      <Text className="text-[10px] font-bold text-red-500">NO FORM NEEDED</Text>
-                    </View>
-                  </View>
-                  <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    Snap a photo of any received box — YOLO + Gemini + CatBoost predict if internal screen is damaged
-                  </Text>
-                </View>
-              </View>
-              <ArrowRight size={18} color="#FF2D55" />
-            </Pressable>
-
-            {/* 2. Micro-Scratch Screen Inspector (Direct to /screen-scratch) */}
-            <Pressable
-              onPress={() => router.push('/screen-scratch' as any)}
-              className="bg-zinc-50 dark:bg-[#121216] p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80 shadow-sm"
-            >
-              <View className="flex-row items-center gap-3.5 flex-1 pr-2">
-                <View className="w-11 h-11 rounded-xl bg-purple-500/10 border border-purple-500/20 items-center justify-center">
-                  <Smartphone size={22} color="#A855F7" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base font-bold text-black dark:text-white">
-                    Screen Micro-Scratch Scanner
-                  </Text>
-                  <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    Dedicated hairline crack & glass fracture inspection using CLAHE edge detection
-                  </Text>
-                </View>
-              </View>
-              <ArrowRight size={18} color="#71717A" />
-            </Pressable>
-
-            {/* 3. Comprehensive Documentation & QC Guide (Direct to /guide) */}
-            <Pressable
-              onPress={() => router.push('/guide' as any)}
-              className="bg-zinc-50 dark:bg-[#121216] p-3.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 flex-row items-center justify-between active:opacity-80"
-            >
-              <View className="flex-row items-center gap-3 flex-1 pr-2">
-                <View className="w-9 h-9 rounded-xl bg-zinc-200 dark:bg-zinc-800 items-center justify-center">
-                  <HelpCircle size={18} color={isDark ? '#E4E4E7' : '#27272A'} />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-xs font-bold text-black dark:text-white">How Inspectify Works</Text>
-                  <Text className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5" numberOfLines={2}>
-                    Step-by-step documentation for lighting, threshold tuning, and defect classes
-                  </Text>
-                </View>
-              </View>
-              <ArrowRight size={16} color="#71717A" />
-            </Pressable>
-          </View>
-        </View>
-
-        {/* ========================================================================= */}
         {/* HOW THE SYSTEM WORKS (EXPLANATION IN HOME SCREEN)                         */}
         {/* ========================================================================= */}
         <View className="mb-6">
@@ -294,7 +213,7 @@ export default function HomeScreen() {
             How Inspectify Works
           </Text>
           <Text className="text-xs text-zinc-500 dark:text-zinc-400 mb-3.5">
-            A three-tier artificial intelligence pipeline powering every diagnosis
+            Three-step verification process for packages and contents
           </Text>
 
           <View className="gap-2.5">
@@ -305,10 +224,10 @@ export default function HomeScreen() {
               </View>
               <View className="flex-1">
                 <Text className="text-sm font-bold text-black dark:text-white">
-                  Computer Vision (YOLOv8 & OpenCV)
+                  Visual Surface Inspection
                 </Text>
                 <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Instantly flags packaging tears, crushed box corners, punctures, and screen micro-scratches.
+                  Detects packaging tears, crushed box corners, punctures, and display scratches.
                 </Text>
               </View>
             </View>
@@ -320,10 +239,10 @@ export default function HomeScreen() {
               </View>
               <View className="flex-1">
                 <Text className="text-sm font-bold text-black dark:text-white">
-                  Context & Transit Intelligence (Gemini + Live APIs)
+                  Transit Condition Analysis
                 </Text>
                 <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Pulls real-world GPS corridor distance, live weather (Open-Meteo), and evaluates road shock absorption.
+                  Evaluates route distance, transit conditions, and weather exposure factors.
                 </Text>
               </View>
             </View>
@@ -335,10 +254,10 @@ export default function HomeScreen() {
               </View>
               <View className="flex-1">
                 <Text className="text-sm font-bold text-black dark:text-white">
-                  CatBoost Predictive Machine Learning
+                  Damage Risk Prediction
                 </Text>
                 <Text className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                  Computes exact damage risk probability for the outer box and whether internal screen glass is intact.
+                  Calculates structural packaging risk and verifies internal content preservation.
                 </Text>
               </View>
             </View>

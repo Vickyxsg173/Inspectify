@@ -1,148 +1,448 @@
-# 📱 AI Defect & Screen Scratch Inspection App
+<div align="center">
 
-A modern, full-stack AI mobile application built with **React Native (Expo SDK 57)** and **FastAPI / PyTorch**. The platform provides real-time physical package inspection, dedicated screen scratch/crack detection using custom YOLO models, and an intelligent **AI Support Assistant** for automated customer care extraction and contact resolution.
+<img src="assets/images/icon.png" alt="Inspectify Logo" width="120" height="120" style="border-radius:28px"/>
 
----
+# Inspectify
 
-## ✨ Features & Capabilities
+**AI-powered logistics packaging inspection and shipment intelligence platform**
 
-### 🔍 1. Physical Package Defect Detection
-- Upload or capture images of shipping packages.
-- Real-time computer vision analysis identifying damage types: **Scratches**, **Dents**, **Tears**, and **Structural Box Integrity**.
-- Visual feedback with colored bounding boxes and severity metrics.
+[![React Native](https://img.shields.io/badge/React%20Native-0.88-61DAFB?logo=react&logoColor=white)](https://reactnative.dev)
+[![Expo SDK](https://img.shields.io/badge/Expo-SDK%2058-000020?logo=expo&logoColor=white)](https://expo.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?logo=typescript&logoColor=white)](https://typescriptlang.org)
+[![Supabase](https://img.shields.io/badge/Supabase-Auth%20%26%20DB-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com)
+[![YOLOv8](https://img.shields.io/badge/YOLOv8-Custom%20Model-00FFFF?logo=python&logoColor=black)](https://ultralytics.com)
+[![Gemini](https://img.shields.io/badge/Google%20Gemini-Vision%20AI-4285F4?logo=google&logoColor=white)](https://deepmind.google/gemini)
 
-### 📱 2. Screen Scratch & Crack Check (Dedicated Section)
-- Specialized inspection for mobile display glass.
-- Powered by a custom-trained **YOLO Screen Scratch Detection model** (`screen_scratch_model.pt`).
-- Highlights micro-scratches, cracks, and display abrasions with pixel-level bounding boxes.
-
-### 🤖 3. AI Support & Customer Care Resolution (Beta)
-- **Automatic Brand Extraction**: Uses Gemini / Vision AI to detect product brand names directly from package or device images.
-- **Direct Phone Helpline**: Instantly extract and tap to call official brand customer care lines.
-- **3-Tier Verified Email Lookup**:
-  1. **Tier 1**: Official India-specific Customer Care Email.
-  2. **Tier 2**: Universal / Global Support Email (if India-specific email is unavailable).
-  3. **Tier 3**: Verified Web Search fallback (marks as `Not Found` if no verified email exists to prevent hallucinated/misleading addresses).
-- **One-Tap Email Composer**: Launch native email client with pre-filled brand info, issue category, and verified support email.
+</div>
 
 ---
 
-## 🛠️ Tech Stack & Architecture
+## Overview
 
-### **Frontend (Mobile App)**
-- **Framework**: React Native with Expo SDK 57 (Expo Router)
-- **Styling & UI**: Custom dark mode glassmorphism UI with smooth animations
-- **Native APIs**: `expo-camera`, `expo-image-picker`, `expo-file-system/legacy` (high-performance async multipart file transfers), `linking`
+**Inspectify** is an enterprise-grade mobile application that uses a multi-layered AI stack — YOLOv8 object detection, Google Gemini Vision multimodal AI, and CatBoost gradient-boosted ML — to help logistics companies and individual sellers assess packaging quality, predict shipment damage risk, and optimise dispatch schedules.
 
-### **Backend (AI Inference Server)**
-- **Framework**: Python FastAPI & Uvicorn
-- **AI Models**: Custom PyTorch YOLO Models & Google Gemini 1.5 Flash / Vision APIs
-- **Image Processing**: OpenCV, PIL, NumPy
-- **CORS & Networking**: Configured for local network execution (Wi-Fi IP configurable)
+The app serves two distinct user roles:
+
+| Role | Purpose |
+|------|---------|
+| **Personal** | Individual sellers inspect packages, detect defects, and evaluate risk before dispatch |
+| **Company** | Business accounts manage shipments end-to-end, with analytics, route intelligence, and dispatch optimisation |
 
 ---
 
-## 🚀 Getting Started
+## Screenshots & Features at a Glance
 
-### 📋 Prerequisites
-- **Node.js** (v18 or higher) & **npm**
-- **Python 3.9+** with PyTorch installed
-- **Expo Go App** on iOS/Android or an emulator
+```
+📦 Image QC          📹 Live Stream       🎬 Video Inspection
+🧠 Risk Predictor    🗺️ Route Analytics   📅 Dispatch Optimizer
+📊 Company Dashboard 🚚 Shipment Manager  📄 PDF Report Export
+```
 
 ---
 
-## ⚙️ Environment Setup (`.env`)
+## Architecture
 
-Create a `.env` file in the root of `yolo_mobile_app` (or copy `.env.example`):
+```
+┌────────────────────────────────────────────────────────────────┐
+│                     Inspectify Mobile App                      │
+│                (React Native + Expo Router)                    │
+└──────────────┬───────────────────────────────┬────────────────┘
+               │                               │
+   ┌───────────▼──────────┐       ┌────────────▼───────────┐
+   │   AI Detection Layer │       │   Cloud Services Layer  │
+   │                      │       │                        │
+   │  • YOLOv8 Backend    │       │  • Supabase Auth & DB  │
+   │    (FastAPI / Python)│       │  • Gemini Vision API   │
+   │  • Gemini 2.5 Flash  │       │  • OpenRouter LLM      │
+   │    (Vision fallback) │       │  • Open-Meteo Weather  │
+   │  • CatBoost ML       │       │  • Nominatim Geocoding │
+   └──────────────────────┘       └────────────────────────┘
+```
+
+### AI Stack
+
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| Object Detection | **YOLOv8** (custom-trained, `.pt`) | Box & packaging defect detection |
+| Screen Defect | **YOLOv8** (second custom model) | Screen scratch / crack detection |
+| Vision Fallback | **Google Gemini 2.5 Flash** | Multimodal image analysis when backend unavailable |
+| Risk Prediction | **CatBoost Gradient Boosting** | End-to-end shipment damage risk scoring |
+| Dispatch Intelligence | **Gemini + OpenRouter LLM** | Corridor analysis & departure window AI |
+| Weather | **Open-Meteo API** | 7-day forecast for route risk scoring |
+| Geocoding | **Nominatim (OpenStreetMap)** | Origin/destination coordinate lookup |
+
+---
+
+## Features
+
+### 🔍 Image Quality Control (Personal)
+
+- **Dual-engine inspection** — tries YOLOv8 backend (3.5 s timeout), automatically falls back to Gemini Vision AI
+- **Package defect detection** — detects dents, tears, crush damage, punctures on external packaging
+- **Screen defect detection** — dedicated model for detecting cracks and scratches on device screens
+- **Parcel Risk Evaluator** — toggle-activated within the QC tab; uses defect output to classify parcel as *Intact* or *Damaged* via CatBoost
+- Confidence score overlays with annotated bounding boxes
+
+### 📹 Live Stream Inspection
+
+- Real-time camera feed processed at ~3.5 s intervals
+- Streams frames to YOLOv8 backend via `/api/live-stream/frame`
+- Live defect overlay with bounding boxes and confidence labels
+- Snapshot capture of defective frames
+
+### 🎬 Video Inspection
+
+- Upload full MP4/MOV video for async frame-by-frame YOLO inspection
+- Configurable extraction FPS
+- Annotated video output + per-defect timestamps
+- Real-time progress tracking via polling
+
+### 🧠 Shipment Risk Predictor (Personal)
+
+Full CatBoost ML pipeline with 25+ input features:
+
+| Category | Features |
+|----------|---------|
+| Logistics | Transport mode, carrier, distance, transit hours |
+| Package | Type, weight, dimensions, material, cushioning |
+| Handling | Conditions, fragile flag, handling events |
+| Weather | Temperature (mean/max/min), humidity, precipitation, wind |
+| Mode-specific | Stops, vibration level, altitude risk, port handlings |
+
+Returns a **damage risk probability** (0–100 %) with an `Intact` / `Damaged` verdict, alongside a full confidence breakdown.
+
+### 🗺️ Route Analytics (Company)
+
+- Origin & destination with **geolocation autocomplete**
+- **Calendar date picker** — select planned dispatch date visually
+- 7-day weather corridor fetched from Open-Meteo for the full route
+- CatBoost risk scores for each day around the planned date
+- Departure window comparison (Early Morning → Overnight)
+- **PDF report export** — full analytics report shareable via email or file share
+
+### 📅 Dispatch Window Optimizer (Company)
+
+- Select planned shipping date via interactive **CalendarDatePickerModal**
+- Transport mode selection (Road / Air / Sea / Rail) with mode-specific configuration
+- Recommended dispatch windows with risk scores for ±3 days around planned date
+- **LLM-powered AI insights** via Gemini / OpenRouter:
+  - Traffic corridor analysis
+  - Selected vs. recommended departure verdict
+  - Actionable logistics recommendations
+  - Confidence score
+
+### 📊 Company Dashboard
+
+- Shipment KPI cards (total, in-transit, delivered, flagged)
+- Recent shipments feed with status badges
+- Quick navigation to Shipments, Analytics, and Dispatch tools
+
+### 🚚 Shipment Manager (Company)
+
+- Full shipment CRUD with Supabase persistence
+- New shipment creation wizard with package details, carrier, route
+- Shipment detail view with **traceability modal**
+- Filter and search across all shipments
+
+### ⚙️ Settings
+
+- Switch between YOLOv8 models (`best` / `latest`)
+- Adjust confidence thresholds per model independently
+- Dark / Light mode toggle
+- Profile management
+
+---
+
+## Tech Stack
+
+### Mobile App
+
+| Layer | Library / Version |
+|-------|--------------------|
+| Framework | React Native 0.88.1 |
+| Navigation | Expo Router 58 (file-based) |
+| UI Styling | NativeWind 4 (Tailwind CSS for RN) |
+| Auth | Supabase Auth + AsyncStorage session persistence |
+| State | React hooks + Context API (`AuthContext`) |
+| Icons | Expo Vector Icons (Ionicons, MaterialCommunityIcons, FontAwesome5), Lucide RN |
+| Animations | React Native Reanimated 4 |
+| Gestures | React Native Gesture Handler 3 |
+| Camera | Expo Camera |
+| Image Picker | Expo Image Picker |
+| Location | Expo Location |
+| File System | Expo File System |
+| PDF | Expo Print + Expo Sharing |
+| Email | Expo Mail Composer |
+| Video | Expo Video |
+
+### Backend (separate server, not in this repo)
+
+| Component | Technology |
+|-----------|-----------|
+| API Server | FastAPI (Python) |
+| Defect Detection | YOLOv8 (Ultralytics) |
+| Risk ML | CatBoost |
+| Transport | Uvicorn |
+| Endpoints | `/api/live-stream/frame`, `/api/video-inspection/*`, `/api/predict/*` |
+
+### Cloud & External APIs
+
+| Service | Usage |
+|---------|-------|
+| **Supabase** | Authentication, shipment database, real-time |
+| **Google Gemini 2.5 Flash** | Vision AI for image QC fallback + dispatch intelligence |
+| **OpenRouter** | Alternative LLM routing for dispatch insights |
+| **Open-Meteo** | Free 7-day weather forecast (no API key required) |
+| **Nominatim** | Reverse + forward geocoding (OpenStreetMap) |
+
+---
+
+## Project Structure
+
+```
+yolo_mobile_app/
+├── src/
+│   ├── app/
+│   │   ├── (tabs)/                   # Personal account screens
+│   │   │   ├── index.tsx             # Home screen
+│   │   │   ├── image-inspect.tsx     # Image QC tab
+│   │   │   ├── live-stream.tsx       # Live camera inspection
+│   │   │   ├── live-video.tsx        # Live video view
+│   │   │   ├── video-inspection.tsx  # Video upload inspection
+│   │   │   ├── screen-scratch.tsx    # Screen defect detection
+│   │   │   ├── settings.tsx          # App settings
+│   │   │   ├── guide.tsx             # User guide
+│   │   │   └── support-beta.tsx      # Support & beta features
+│   │   ├── company/                  # Company account screens
+│   │   │   ├── dashboard.tsx         # KPI dashboard
+│   │   │   ├── shipments.tsx         # Shipment list
+│   │   │   ├── new-shipment.tsx      # Create shipment
+│   │   │   ├── shipment-detail.tsx   # Shipment details & traceability
+│   │   │   ├── analytics.tsx         # Route analytics + risk scoring
+│   │   │   └── dispatch.tsx          # Dispatch window optimizer
+│   │   ├── auth/
+│   │   │   ├── login.tsx             # Login screen
+│   │   │   └── register.tsx          # Registration screen
+│   │   ├── predict.tsx               # Standalone risk predictor
+│   │   └── _layout.tsx               # Root layout + auth guard
+│   ├── components/
+│   │   ├── CalendarDatePickerModal.tsx  # Pure-RN calendar date picker
+│   │   ├── LocationSearchInput.tsx      # Geolocation autocomplete
+│   │   ├── ShipmentTraceabilityModal.tsx
+│   │   ├── ThemeToggle.tsx
+│   │   └── ...
+│   ├── services/
+│   │   ├── geminiVision.ts           # Gemini Vision API client
+│   │   ├── catboostPredictor.ts      # CatBoost ML API client
+│   │   ├── dispatchAiService.ts      # LLM dispatch intelligence
+│   │   ├── liveStreamApi.ts          # Live frame streaming API
+│   │   ├── videoInspectionApi.ts     # Video upload & polling API
+│   │   ├── supabaseClient.ts         # Supabase JS client
+│   │   └── supabaseAdmin.ts          # Supabase admin client
+│   ├── utils/
+│   │   ├── pdfReportGenerator.ts     # PDF export utility
+│   │   ├── shipmentStorage.ts        # AsyncStorage shipment cache
+│   │   ├── scanStorage.ts            # Scan history persistence
+│   │   ├── modelStorage.ts           # Active YOLO model preference
+│   │   ├── confidenceStorage.ts      # Confidence threshold settings
+│   │   └── profileStorage.ts         # User profile cache
+│   ├── contexts/
+│   │   └── AuthContext.tsx           # Auth state + role management
+│   └── constants/
+│       ├── api.ts                    # Backend URL resolver
+│       ├── brandDirectory.ts         # Brand support lookup
+│       └── theme.ts                  # Design tokens
+├── Inspectify_ML_Artifacts/          # ML model training artifacts
+│   ├── models/
+│   ├── output/
+│   └── raw/
+├── best.pt                           # Primary YOLOv8 packaging defect model
+├── latest_model_defect.pt            # Latest retrained defect model
+├── screen_scratch_model.pt           # Screen defect detection model
+├── app.json                          # Expo app config
+├── package.json
+├── tsconfig.json
+├── tailwind.config.js
+└── metro.config.js
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js** 18+ and npm
+- **Expo CLI** (`npm install -g expo-cli`)
+- **Expo Go** app on your phone, or an Android/iOS simulator
+- Python 3.10+ with the FastAPI backend running (see [Backend Setup](#backend-setup))
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Vickyxsg173/Inspectify.git
+cd Inspectify/yolo_mobile_app
+```
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+### 3. Configure environment variables
+
+Create a `.env` file in the project root:
 
 ```env
-# Network IP Configuration (Change this IP when switching Wi-Fi networks)
-EXPO_PUBLIC_HOST_IP=192.168.29.140
+# Your local machine IP (replace with your actual LAN IP)
+EXPO_PUBLIC_HOST_IP=192.168.x.x
 
-# Backend Secrets & API Keys
-GEMINI_API_KEY=your_gemini_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
+# Google Gemini API key
+EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key_here
+
+# OpenRouter API key (for dispatch LLM — optional, falls back to Gemini)
+EXPO_PUBLIC_OPENROUTER_KEY=your_openrouter_key_here
+
+# Supabase
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-> ⚠️ **Note**: `.env` is included in `.gitignore` to keep API keys and local IPs private.
-
----
-
-## 🖥️ Commands to Run the Project
-
-### 1️⃣ Start the FastAPI Backend Server
-Open terminal, navigate to the backend directory, and run:
+### 4. Start the Expo dev server
 
 ```bash
-cd aidefect/backend
-/opt/anaconda3/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+npm start
+# or for a specific platform:
+npm run android
+npm run ios
 ```
-*The backend will start listening at `http://0.0.0.0:8000` (accessible from your mobile phone via local Wi-Fi).*
+
+Scan the QR code with **Expo Go** on your phone (must be on the same LAN as your dev machine).
 
 ---
 
-### 2️⃣ Start the Expo Mobile App
-Open a new terminal window, navigate to `yolo_mobile_app`, and run:
+## Backend Setup
+
+The FastAPI backend serves the YOLOv8 and CatBoost models. It is expected to run at `http://<your-ip>:8000`.
+
+> **Note:** The backend source is in a separate repository / directory. Ensure it is running before using the app's detection and prediction features.
+
+### Key endpoints
+
+| Method | Endpoint | Description |
+|--------|---------|-------------|
+| `POST` | `/api/live-stream/frame` | Process a single Base64 camera frame |
+| `POST` | `/api/video-inspection/upload` | Upload video for async inspection |
+| `GET` | `/api/video-inspection/status/{id}` | Poll inspection progress |
+| `GET` | `/api/video-inspection/results/{id}` | Fetch completed results |
+| `POST` | `/api/predict` | CatBoost risk prediction |
+
+---
+
+## ML Models
+
+| File | Model | Purpose | Input |
+|------|-------|---------|-------|
+| `best.pt` | YOLOv8 Custom | Packaging defect detection | RGB image |
+| `latest_model_defect.pt` | YOLOv8 Retrained | Updated defect detection | RGB image |
+| `screen_scratch_model.pt` | YOLOv8 Custom | Screen scratch / crack detection | RGB image |
+
+### Defect Categories Detected
+
+- Dent / Crush damage
+- Tear / Puncture
+- Corner damage
+- Moisture damage
+- Label damage
+- Screen crack / scratch
+
+---
+
+## CalendarDatePickerModal
+
+A fully **pure React Native** calendar component (zero native dependencies) used throughout the app for date selection. It works immediately on any existing APK build without requiring a new native build.
+
+**Features:**
+- Month / year navigation with `<` / `>` arrows
+- Weekday headers (Su Mo Tu We Th Fr Sa)
+- Past dates disabled
+- Inspectify brand red `#FF2D55` selection highlight
+- Today highlighted with a subtle accent
+- Quick shortcut chips: **Today**, **Tomorrow**, **+2D**, **+3D**, **+5D**, **+7D**
+
+---
+
+## User Roles & Account Types
+
+### Personal Account
+- Image QC with dual-engine defect detection
+- Live stream inspection
+- Video inspection
+- Screen defect detection
+- Shipment risk predictor (with calendar date picker)
+- Scan history and PDF report
+
+### Company Account
+- All Personal features, plus:
+- KPI Dashboard (shipment overview)
+- Full shipment lifecycle management (CRUD)
+- Route Analytics with 7-day weather risk scoring
+- Dispatch Window Optimizer with LLM AI insights
+- PDF risk report export
+- Shipment traceability modal
+
+---
+
+## Security & Privacy
+
+- Camera, photo library, and location permissions declared in `app.json` with user-facing descriptions
+- Supabase row-level security (RLS) for per-user data isolation
+- No encryption exemption (`ITSAppUsesNonExemptEncryption: false`) for App Store compliance
+- API keys are loaded from environment variables only — never committed to git
+
+---
+
+## Build & Deployment
+
+This project uses **EAS Build** (Expo Application Services) for production APK/IPA generation.
 
 ```bash
-cd yolo_mobile_app
-REACT_NATIVE_PACKAGER_HOSTNAME=192.168.29.140 npx expo start --host lan --clear
+# Install EAS CLI
+npm install -g eas-cli
+
+# Configure
+eas build:configure
+
+# Build Android APK (internal distribution)
+eas build --platform android --profile preview
+
+# Build iOS (requires Apple Developer account)
+eas build --platform ios --profile preview
 ```
 
-- Scan the generated QR code with **Expo Go** on Android/iOS.
-- Ensure both your computer and mobile device are connected to the **same Wi-Fi network**.
+> **EAS Project ID:** `9754134d-d397-4b22-aba5-ca41848b4cf6`
 
 ---
 
-## 📁 Project Structure
+## Contributing
 
-```text
-├── yolo_mobile_app/                   # React Native Expo Mobile App
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── _layout.tsx            # Main layout & navigation
-│   │   │   ├── index.tsx              # Package defect inspection screen
-│   │   │   ├── screen-scratch.tsx     # Dedicated screen scratch check tab
-│   │   │   └── support-beta.tsx      # AI Support & Customer Care tab
-│   │   └── components/               # Custom UI components & tab bars
-│   ├── .env                           # Local environment config (Git ignored)
-│   ├── .env.example                   # Environment variable template
-│   └── package.json
-│
-└── aidefect/backend/                  # FastAPI Backend Server
-    ├── main.py                        # API routes, YOLO inference & Gemini integration
-    ├── screen_scratch_model.pt        # Trained screen scratch detection weights
-    └── requirements.txt               # Python dependencies
-```
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feat/your-feature`
+3. Commit your changes: `git commit -m "feat: add your feature"`
+4. Push to the branch: `git push origin feat/your-feature`
+5. Open a Pull Request
 
 ---
 
-## 🔒 Security & Best Practices
-- **No Hardcoded Secrets**: All API keys and environment parameters are loaded dynamically via `.env`.
-- **Verified Information**: AI Support utilizes strictly validated web search verification to eliminate false or hallucinated customer support contacts.
+## License
 
-## 🎞️ Video Inspection (Beta)
-
-The mobile app now has a separate **Video Beta** tab for selecting packaging videos and submitting them to a video inspection API. It validates MP4/MOV, a 100 MB client-side size ceiling, and a 3 minute duration ceiling; offers 1, 2, or 5 FPS sampling; polls asynchronous job status; displays frame counts/categories/timestamps returned by the server; and can share a text inspection report. Its API base URL is derived from the existing `BACKEND_URL` configuration.
-
-### Repository audit and integration status
-
-- This checkout contains the Expo Router frontend and no backend source, Railway configuration, backend dependency manifest, or API definitions beyond the existing image endpoints documented by the mobile callers (`POST /upload/` and `POST /upload_screen_scratch/`). The deployed backend could not be inspected from this repository.
-- `best.pt` and the `screen-scratch-detection/` artifact directory are present, along with a `best.pt.zip` archive. They are binary PyTorch-style model artifacts, but this frontend-only checkout provides no loader, model metadata, class map, or inference code to establish their architectures or capabilities. No video model is configured or confirmed.
-- The current packaging image flow calls `/upload/`; screen checks call `/upload_screen_scratch/`. The app also has Gemini Vision summary/fallback code in `src/services/geminiVision.ts`. That fallback is deliberately not called per extracted video frame.
-- The video flow expects `POST /api/video-inspection/upload` (multipart `file`, `extraction_fps`; response `inspection_id` or `job_id`), `GET /api/video-inspection/status/{inspection_id}`, and `GET /api/video-inspection/results/{inspection_id}`. Status fields: `status` (`queued`, `processing`, `completed`, `failed`), optional `progress`, `stage`, `error`. Results use the `VideoInspectionResults` shape in `src/services/videoInspectionApi.ts`. An optional `annotated_video_url` may be returned, but playback is not enabled in this build.
-- No backend endpoint implementation is included here, so a deployed API that implements this contract is required for an inspection to succeed. Railway storage, background task behavior, decoder compatibility, model adapter and persistence need to be implemented/verified in the backend repository. The selected model remains unconfirmed; this feature does not run mock or client-side predictions.
-
-### Test in the app
-
-1. Configure `EXPO_PUBLIC_HOST_IP` in `.env` to the address of the backend reachable from the phone, using the same existing setup as image inspection. For a deployed host, update the existing `BACKEND_URL` configuration in `src/constants/api.ts` to use the deployed HTTPS base URL; do not add a separate video URL.
-2. Start the Expo app using the existing command, open **Video Beta**, and select an MP4 or MOV under 100 MB and 3 minutes. Confirm the displayed metadata, select 1/2/5 FPS, and press **Start video inspection**.
-3. With the backend endpoints available, confirm upload/status progress, then check frame totals, defect categories and timestamp list. **Share inspection report** opens the native share sheet. Timestamps are frame events and are not unique package counts.
-4. If the backend does not yet implement the endpoints, the screen will show the API error. That is the expected result with this frontend-only repository; do not treat a successful UI selection as an AI inspection.
-
-Current beta limits: playback preview and annotated video playback are not wired because `expo-video` is declared in the workspace manifest but is not installed in the available offline environment; this screen reports that explicitly. The UI displays selected metadata and server-returned timestamps, but seeking requires the later video-player integration. The provided Railway deployment and end-to-end testing steps cannot be completed from this repository alone. Live camera acquisition is not implemented; a future camera input adapter should feed the same backend frame processing/aggregation engine as uploaded video.
+This project is proprietary software. All rights reserved.
 
 ---
 
-## 📄 License
-This project is developed for educational and research purposes as part of the Major Project initiative.
+<div align="center">
+
+Built with ❤️ using **React Native**, **Expo**, **YOLOv8**, **Google Gemini**, and **CatBoost**
+
+</div>

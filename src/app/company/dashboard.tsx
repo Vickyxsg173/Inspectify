@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
-import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function CompanyDashboard() {
   const { user, companyName, accountType, signOut } = useAuth();
@@ -41,7 +41,7 @@ export default function CompanyDashboard() {
     {
       title: 'Dispatch Window Optimizer',
       subtitle: 'Find safest departure dates using weather forecast & AI traffic',
-      icon: <FontAwesome5 name="route" size={22} color="#F59E0B" />,
+      icon: <MaterialCommunityIcons name="calendar-clock" size={24} color="#F59E0B" />,
       route: '/company/dispatch',
       badge: 'Optimization',
     },

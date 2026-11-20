@@ -1,6 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 export interface PdfReportData {
   companyName?: string;
@@ -45,7 +45,19 @@ function analyzeTopInfluencingFeature(data: PdfReportData): {
   impactScore: string;
   explanation: string;
 } {
-  const { weather, packagingMaterial, cushioning, transportMode, vibrationLevel, distanceKm } = data;
+  const weather = data.weather || {
+    tempMean: 24,
+    tempMax: 30,
+    tempMin: 18,
+    humidity: 50,
+    precipitation: 0,
+    windSpeed: 10,
+  };
+  const packagingMaterial = data.packagingMaterial || 'Cardboard';
+  const cushioning = data.cushioning || 'Standard';
+  const transportMode = data.transportMode || 'Road';
+  const vibrationLevel = data.vibrationLevel || 'Medium';
+  const distanceKm = data.distanceKm || 100;
 
   if (weather.precipitation > 5 && packagingMaterial === 'Cardboard') {
     return {
@@ -471,18 +483,29 @@ export async function exportLogisticsRiskPdf(data: PdfReportData): Promise<void>
 `;
 
   try {
+    if (Platform.OS === 'web') {
+      // On Web: native print dialog lets user view, print, or "Save as PDF" directly
+      await Print.printAsync({ html });
+      return;
+    }
+
+    // On Native (Android / iOS): compile PDF and invoke system share sheet
     const { uri } = await Print.printToFileAsync({ html });
-    if (await Sharing.isAvailableAsync()) {
+    const isAvailable = await Sharing.isAvailableAsync().catch(() => false);
+    if (isAvailable) {
       await Sharing.shareAsync(uri, {
-        UTI: '.pdf',
         mimeType: 'application/pdf',
         dialogTitle: `Inspectify Risk Audit - ${data.origin} to ${data.destination}`,
+      }).catch((shareErr) => {
+        // User closed or dismissed the share sheet - not a system error
+        console.log('Share sheet dismissed:', shareErr?.message);
       });
     } else {
-      Alert.alert('Report Generated', `PDF saved at ${uri}`);
+      Alert.alert('Report Generated', `PDF saved successfully at: ${uri}`);
     }
   } catch (error: any) {
-    Alert.alert('Export Error', error.message || 'Failed to generate PDF report.');
+    console.warn('PDF Export Notice:', error?.message);
+    Alert.alert('Export Notice', error.message || 'Failed to generate PDF report.');
   }
 }
 

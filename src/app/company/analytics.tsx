@@ -8,15 +8,48 @@ import {
   Alert,
   ActivityIndicator,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { supabase } from '../../services/supabaseClient';
-import { predictCatBoostRisk, CatBoostPredictionResult } from '../../services/catboostPredictor';
+import {
+  predictCatBoostRisk,
+  calculateLocalCatBoostRisk,
+  CatBoostPredictionResult,
+} from '../../services/catboostPredictor';
 import { LocationSearchInput } from '../../components/LocationSearchInput';
 import { exportLogisticsRiskPdf } from '../../utils/pdfReportGenerator';
+import { CalendarDatePickerModal } from '../../components/CalendarDatePickerModal';
+
+function formatHumanReadableDate(dateStr: string): string {
+  if (!dateStr || !dateStr.includes('-')) return 'Select Date';
+  const parts = dateStr.split('-').map(Number);
+  const d = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+const getOffsetDateString = (offsetDays: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().split('T')[0];
+};
+
+const QUICK_DATES = [
+  { label: 'Today', offset: 0 },
+  { label: 'Tomorrow', offset: 1 },
+  { label: '+2 Days', offset: 2 },
+  { label: '+3 Days', offset: 3 },
+  { label: '+5 Days', offset: 5 },
+  { label: '+7 Days', offset: 7 },
+];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const TRANSPORT_MODES = ['Road', 'Air', 'Sea', 'Rail'] as const;
@@ -108,6 +141,22 @@ export default function AnalyticsScreen() {
   const [originCoords, setOriginCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [destCoords, setDestCoords] = useState<{ lat: number; lon: number } | null>(null);
 
+  // Planned Dispatch Date & Options around that date
+  const [plannedDate, setPlannedDate] = useState<string>(getOffsetDateString(0));
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateOptions, setDateOptions] = useState<Array<{
+    date: string;
+    dayName: string;
+    tempMean: number;
+    tempMax: number;
+    tempMin: number;
+    precipitation: number;
+    humidity: number;
+    windSpeed: number;
+    riskScore?: number;
+    status?: 'Intact' | 'Damaged';
+  }> | null>(null);
+
   const [carrier, setCarrier] = useState('DHL');
   const [transportMode, setTransportMode] = useState<TransportMode>('Road');
   const [packageType, setPackageType] = useState('Box');
@@ -179,12 +228,13 @@ export default function AnalyticsScreen() {
     return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
   };
 
-  // ── Step 1: Sync real GPS + Weather ──────────────────────────────────────────
-  const fetchLiveLogisticsData = async () => {
+  // ── Step 1: Sync real GPS + Weather for Planned Date & Surrounding Window ──
+  const fetchLiveLogisticsData = async (overrideDate?: string) => {
     if (!originCity.trim() || !destCity.trim()) {
       Alert.alert('Required', 'Please enter both Origin and Destination addresses.');
       return;
     }
+    const targetPlannedDate = (overrideDate || plannedDate).trim() || getOffsetDateString(0);
     setLoadingApis(true);
     setPredictionResult(null);
 
@@ -199,25 +249,53 @@ export default function AnalyticsScreen() {
       const midLon = (oc.lon + dc.lon) / 2;
 
       const weatherRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&daily=temperature_2m_max,temperature_2m_min,temperature_2m_mean,precipitation_sum,windspeed_10m_max,relativehumidity_2m_mean&timezone=auto&forecast_days=1`
+        `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&daily=temperature_2m_max,temperature_2m_min,temperature_2m_mean,precipitation_sum,windspeed_10m_max,relativehumidity_2m_mean&timezone=auto&forecast_days=14`
       );
       const weatherJson = await weatherRes.json();
       const daily = weatherJson.daily || {};
+      const timeList: string[] = daily.time || [];
+
+      let targetIdx = timeList.indexOf(targetPlannedDate);
+      if (targetIdx === -1) {
+        targetIdx = 0;
+      }
 
       const weather = {
-        tempMean: Math.round((daily.temperature_2m_mean || [24])[0]),
-        tempMax: Math.round((daily.temperature_2m_max || [30])[0]),
-        tempMin: Math.round((daily.temperature_2m_min || [18])[0]),
-        humidity: Math.round((daily.relativehumidity_2m_mean || [55])[0]),
-        precipitation: Number((daily.precipitation_sum || [0])[0]),
-        windSpeed: Math.round((daily.windspeed_10m_max || [14])[0]),
+        tempMean: Math.round((daily.temperature_2m_mean || [24])[targetIdx] ?? 24),
+        tempMax: Math.round((daily.temperature_2m_max || [30])[targetIdx] ?? 30),
+        tempMin: Math.round((daily.temperature_2m_min || [18])[targetIdx] ?? 18),
+        humidity: Math.round((daily.relativehumidity_2m_mean || [55])[targetIdx] ?? 55),
+        precipitation: Number((daily.precipitation_sum || [0])[targetIdx] ?? 0),
+        windSpeed: Math.round((daily.windspeed_10m_max || [14])[targetIdx] ?? 14),
       };
 
       setLiveData({ distanceKm: distance, originCoords: oc, destCoords: dc, weather });
 
+      // Generate 5-day comparison window around the user's planned date
+      const numDays = timeList.length;
+      const startIdx = Math.max(0, Math.min(targetIdx - 2, Math.max(0, numDays - 5)));
+      const endIdx = Math.min(numDays, startIdx + 5);
+      const opts: NonNullable<typeof dateOptions> = [];
+
+      for (let i = startIdx; i < endIdx; i++) {
+        const dStr = timeList[i];
+        const dObj = new Date(dStr);
+        opts.push({
+          date: dStr,
+          dayName: dObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+          tempMean: Math.round((daily.temperature_2m_mean || [])[i] ?? 24),
+          tempMax: Math.round((daily.temperature_2m_max || [])[i] ?? 30),
+          tempMin: Math.round((daily.temperature_2m_min || [])[i] ?? 18),
+          precipitation: Number((daily.precipitation_sum || [])[i] ?? 0),
+          humidity: Math.round((daily.relativehumidity_2m_mean || [])[i] ?? 55),
+          windSpeed: Math.round((daily.windspeed_10m_max || [])[i] ?? 14),
+        });
+      }
+      setDateOptions(opts);
+
       Alert.alert(
-        'Route & Weather Synchronized',
-        `Distance: ${distance} km\nCorridor Temp: ${weather.tempMean}°C\nRainfall: ${weather.precipitation} mm\nHumidity: ${weather.humidity}%`
+        'Corridor Synchronized',
+        `Planned Date: ${targetPlannedDate}\nDistance: ${distance} km\nCorridor Temp: ${weather.tempMean}°C\nRainfall: ${weather.precipitation} mm\nHumidity: ${weather.humidity}%`
       );
     } catch (e: any) {
       Alert.alert('Live Data Fetch Failed', e.message || 'Check your internet connection.');
@@ -279,6 +357,35 @@ export default function AnalyticsScreen() {
 
       const result = await predictCatBoostRisk(payload, session?.access_token);
       setPredictionResult(result);
+
+      // Evaluate risk for each date option in the window around the planned date
+      if (dateOptions && dateOptions.length > 0) {
+        const evaluated = dateOptions.map((opt) => {
+          const evalRes = calculateLocalCatBoostRisk({
+            transport_mode: transportMode,
+            distance_km: dist,
+            carrier,
+            package_type: packageType,
+            package_weight_kg: parseFloat(weightKg) || 5.0,
+            packaging_material: packagingMaterial,
+            cushioning_type: cushioning,
+            handling_conditions: fragileHandling === 'Yes' ? 'Fragile' : 'Standard',
+            fragile_handling: fragileHandling,
+            temperature_mean: opt.tempMean,
+            temperature_max: opt.tempMax,
+            temperature_min: opt.tempMin,
+            humidity_mean: opt.humidity,
+            precipitation_mm: opt.precipitation,
+            wind_speed_max: opt.windSpeed,
+          });
+          return {
+            ...opt,
+            riskScore: Math.round(evalRes.box_damage_probability * 100),
+            status: evalRes.box_condition,
+          };
+        });
+        setDateOptions(evaluated);
+      }
     } catch (e: any) {
       Alert.alert('Prediction Notice', e.message || 'Evaluation completed');
     } finally {
@@ -460,9 +567,51 @@ export default function AnalyticsScreen() {
                 />
               </View>
 
+              {/* Planned Dispatch Date — Calendar Picker */}
+              <View style={{ marginTop: 14, marginBottom: 6 }}>
+                <Text style={s.fieldLabel}>Planned Dispatch Date</Text>
+                <TouchableOpacity
+                  onPress={() => setShowDatePicker(true)}
+                  style={[s.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 }]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Ionicons name="calendar-outline" size={16} color="#FF2D55" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+                      {formatHumanReadableDate(plannedDate)}
+                    </Text>
+                    <Text style={{ color: '#71717A', fontSize: 11 }}>({plannedDate})</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color="#71717A" />
+                </TouchableOpacity>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6, marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {QUICK_DATES.map((p) => {
+                      const dateVal = getOffsetDateString(p.offset);
+                      const isSel = plannedDate === dateVal;
+                      return (
+                        <TouchableOpacity
+                          key={p.label}
+                          onPress={() => setPlannedDate(dateVal)}
+                          style={[
+                            s.chip,
+                            isSel && s.chipActive,
+                            { paddingHorizontal: 12, paddingVertical: 6 },
+                          ]}
+                        >
+                          <Text style={[s.chipText, isSel && s.chipTextActive, { fontSize: 11 }]}>
+                            {p.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </ScrollView>
+              </View>
+
               <TouchableOpacity
                 style={[s.syncBtn, loadingApis && { opacity: 0.6 }]}
-                onPress={fetchLiveLogisticsData}
+                onPress={() => fetchLiveLogisticsData()}
                 disabled={loadingApis}
               >
                 {loadingApis ? (
@@ -777,6 +926,76 @@ export default function AnalyticsScreen() {
                   </Text>
                 </View>
 
+                {/* Options and Results Around Planned Date */}
+                {dateOptions && dateOptions.length > 0 && (
+                  <View style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#27272A' }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>
+                        Departure Windows Around {plannedDate}
+                      </Text>
+                      <View style={{ backgroundColor: 'rgba(255,45,85,0.15)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                        <Text style={{ color: '#FF2D55', fontSize: 10, fontWeight: '700' }}>5-DAY OPTIONS</Text>
+                      </View>
+                    </View>
+                    <Text style={{ color: '#A1A1AA', fontSize: 11, marginBottom: 10 }}>
+                      Compare damage probability across dates surrounding your planned dispatch:
+                    </Text>
+
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {dateOptions.map((opt) => {
+                          const isPlanned = opt.date === plannedDate.trim();
+                          const hasRisk = typeof opt.riskScore === 'number';
+                          const isDamaged = opt.status === 'Damaged';
+                          return (
+                            <TouchableOpacity
+                              key={opt.date}
+                              onPress={async () => {
+                                setPlannedDate(opt.date);
+                                await fetchLiveLogisticsData(opt.date);
+                              }}
+                              style={{
+                                backgroundColor: isPlanned ? '#27272A' : '#18181B',
+                                borderWidth: 1,
+                                borderColor: isPlanned ? '#FF2D55' : '#3F3F46',
+                                borderRadius: 12,
+                                padding: 10,
+                                minWidth: 105,
+                              }}
+                            >
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <Text style={{ color: isPlanned ? '#FFFFFF' : '#D4D4D8', fontSize: 12, fontWeight: '700' }}>
+                                  {opt.dayName}
+                                </Text>
+                                {isPlanned && (
+                                  <View style={{ backgroundColor: '#FF2D55', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 }}>
+                                    <Text style={{ color: '#FFFFFF', fontSize: 8, fontWeight: '800' }}>PLANNED</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={{ color: '#A1A1AA', fontSize: 11 }}>
+                                {opt.tempMean}°C • {opt.precipitation}mm
+                              </Text>
+                              {hasRisk && (
+                                <Text
+                                  style={{
+                                    marginTop: 4,
+                                    fontSize: 11,
+                                    fontWeight: '700',
+                                    color: isDamaged ? '#FF2D55' : '#10B981',
+                                  }}
+                                >
+                                  Risk: {opt.riskScore}% ({opt.status})
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+
                 {/* OFFICIAL EXPORT PDF REPORT BUTTON */}
                 <TouchableOpacity
                   style={[s.exportPdfBtn, exportingPdf && { opacity: 0.7 }]}
@@ -891,6 +1110,13 @@ export default function AnalyticsScreen() {
           </View>
         )}
       </ScrollView>
+      <CalendarDatePickerModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        selectedDate={plannedDate}
+        onSelectDate={(date) => { setPlannedDate(date); }}
+        title="Select Planned Dispatch Date"
+      />
     </SafeAreaView>
   );
 }

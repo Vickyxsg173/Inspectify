@@ -454,30 +454,65 @@ export default function LiveVideoScreen() {
                 </View>
 
                 {/* Detected Bounding Boxes */}
-                {liveResult?.defects?.map((defect) => {
-                  const [x1, y1, x2, y2] = defect.box_normalized;
-                  return (
-                    <View
-                      key={defect.id}
-                      pointerEvents="none"
-                      style={{
-                        position: 'absolute',
-                        left: `${Math.max(0, Math.min(95, x1 * 100))}%`,
-                        top: `${Math.max(0, Math.min(95, y1 * 100))}%`,
-                        width: `${Math.max(5, Math.min(100, (x2 - x1) * 100))}%`,
-                        height: `${Math.max(5, Math.min(100, (y2 - y1) * 100))}%`,
-                        borderWidth: 3,
-                        borderColor: RED,
-                        borderRadius: 8,
-                        backgroundColor: 'rgba(255,45,85,0.18)',
-                      }}
-                    >
-                      <View style={vs.defectLabel}>
-                        <Text style={vs.defectLabelText}>{defect.label}</Text>
+                {liveResult?.defects && liveResult.defects.length > 0 ? (
+                  liveResult.defects.map((defect) => {
+                    const [x1, y1, x2, y2] = defect.box_normalized;
+                    const leftPct = Math.max(0, Math.min(92, x1 * 100));
+                    const topPct = Math.max(0, Math.min(92, y1 * 100));
+                    const widthPct = Math.max(8, Math.min(100 - leftPct, (x2 - x1) * 100));
+                    const heightPct = Math.max(8, Math.min(100 - topPct, (y2 - y1) * 100));
+                    return (
+                      <View
+                        key={defect.id}
+                        pointerEvents="none"
+                        style={{
+                          position: 'absolute',
+                          left: `${leftPct}%`,
+                          top: `${topPct}%`,
+                          width: `${widthPct}%`,
+                          height: `${heightPct}%`,
+                          borderWidth: 3,
+                          borderColor: RED,
+                          borderRadius: 8,
+                          backgroundColor: 'rgba(255,45,85,0.22)',
+                        }}
+                      >
+                        <View style={[vs.corner, vs.cornerTL]} />
+                        <View style={[vs.corner, vs.cornerTR]} />
+                        <View style={[vs.corner, vs.cornerBL]} />
+                        <View style={[vs.corner, vs.cornerBR]} />
+                        <View style={vs.defectLabel}>
+                          <Text style={vs.defectLabelText}>
+                            {defect.label} {defect.confidence ? `${Math.round(defect.confidence * 100)}%` : ''}
+                          </Text>
+                        </View>
                       </View>
+                    );
+                  })
+                ) : isDefective ? (
+                  <View
+                    pointerEvents="none"
+                    style={{
+                      position: 'absolute',
+                      left: '15%',
+                      top: '25%',
+                      width: '70%',
+                      height: '45%',
+                      borderWidth: 3,
+                      borderColor: RED,
+                      borderRadius: 12,
+                      backgroundColor: 'rgba(255,45,85,0.18)',
+                    }}
+                  >
+                    <View style={[vs.corner, vs.cornerTL]} />
+                    <View style={[vs.corner, vs.cornerTR]} />
+                    <View style={[vs.corner, vs.cornerBL]} />
+                    <View style={[vs.corner, vs.cornerBR]} />
+                    <View style={vs.defectLabel}>
+                      <Text style={vs.defectLabelText}>DEFECT DETECTED</Text>
                     </View>
-                  );
-                })}
+                  </View>
+                ) : null}
 
                 {/* Bottom Controls */}
                 <View style={vs.hudBottom} pointerEvents="box-none">

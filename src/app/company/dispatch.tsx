@@ -18,8 +18,36 @@ import {
   DispatchAiInsight,
 } from '../../services/dispatchAiService';
 import { LocationSearchInput } from '../../components/LocationSearchInput';
+import { CalendarDatePickerModal } from '../../components/CalendarDatePickerModal';
 
 type TransportMode = 'Road' | 'Air' | 'Sea' | 'Rail';
+
+function formatHumanReadableDate(dateStr: string): string {
+  if (!dateStr || !dateStr.includes('-')) return 'Select Planned Date';
+  const parts = dateStr.split('-').map(Number);
+  const d = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
+  return d.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+const getOffsetDateString = (offsetDays: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().split('T')[0];
+};
+
+const QUICK_DATE_PRESETS = [
+  { label: 'Today', offset: 0 },
+  { label: 'Tomorrow', offset: 1 },
+  { label: '+2 Days', offset: 2 },
+  { label: '+3 Days', offset: 3 },
+  { label: '+5 Days', offset: 5 },
+  { label: '+7 Days', offset: 7 },
+];
 
 const TIME_WINDOWS = [
   '06:00 AM (Early Morning)',
@@ -128,8 +156,9 @@ export default function DispatchScreen() {
   const [transportMode, setTransportMode] = useState<TransportMode>('Road');
 
   // Explicit Planned Dispatch Date & Time fields
-  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>(getOffsetDateString(0));
   const [selectedTime, setSelectedTime] = useState<string>(TIME_WINDOWS[0]);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const [analyzing, setAnalyzing] = useState(false);
   const [candidates, setCandidates] = useState<DispatchCandidateDay[] | null>(null);
@@ -171,7 +200,7 @@ export default function DispatchScreen() {
       const midLon = (oc.lon + dc.lon) / 2;
 
       const weatherRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&timezone=auto`
+        `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max&timezone=auto&forecast_days=14`
       );
 
       if (!weatherRes.ok) {
@@ -184,7 +213,18 @@ export default function DispatchScreen() {
       const days: DispatchCandidateDay[] = [];
       const cfg = MODE_CONFIG[transportMode];
 
-      for (let i = 0; i < Math.min(daily.time.length, 5); i++) {
+      // Find user planned date in forecast or default to 0
+      const cleanTargetDate = selectedDate.trim() || getOffsetDateString(0);
+      let targetIdx = daily.time.indexOf(cleanTargetDate);
+      if (targetIdx === -1) {
+        targetIdx = 0;
+      }
+
+      // Slice 5-day window centered on the user's planned shipping date
+      const startIdx = Math.max(0, Math.min(targetIdx - 2, daily.time.length - 5));
+      const endIdx = Math.min(daily.time.length, startIdx + 5);
+
+      for (let i = startIdx; i < endIdx; i++) {
         const dStr = daily.time[i];
         const tMax = daily.temperature_2m_max[i] || 25;
         const tMin = daily.temperature_2m_min[i] || 15;
@@ -225,18 +265,12 @@ export default function DispatchScreen() {
         });
       }
 
-      // Sort by risk: lowest first
+      // Sort candidate options by risk score
       days.sort((a, b) => a.riskScore - b.riskScore);
       setCandidates(days);
 
-      // Default planned date to lowest risk day if unset
-      const initialDate = selectedDate || days[0].date;
-      if (!selectedDate) {
-        setSelectedDate(initialDate);
-      }
-
       // Generate context-aware LLM insights
-      generateAiInsights(days, initialDate, selectedTime);
+      generateAiInsights(days, cleanTargetDate, selectedTime);
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Optimization routine failed. Check internet connection.');
     } finally {
@@ -349,7 +383,7 @@ export default function DispatchScreen() {
           </View>
         </View>
 
-        {/* Origin & Destination Hubs with Live Google Maps style Suggestions */}
+        {/* Origin & Destination Hubs + Planned Date & Time Selection */}
         <View className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-6">
           <View className="flex-row gap-3 mb-3">
             <LocationSearchInput
@@ -374,6 +408,80 @@ export default function DispatchScreen() {
             />
           </View>
 
+          {/* Planned Departure Date Input */}
+          <View className="mb-3 pt-2 border-t border-zinc-800">
+            <Text className="text-zinc-400 text-[10px] font-bold uppercase tracking-wider mb-1.5">
+              Planned Shipping Date
+            </Text>
+            
+            {/* Clickable Calendar Date Picker Trigger */}
+            <TouchableOpacity
+              onPress={() => setShowDatePicker(true)}
+              className="bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-3 flex-row items-center justify-between mb-2 active:bg-zinc-900"
+            >
+              <View className="flex-row items-center gap-2.5">
+                <View className="w-7 h-7 rounded-lg bg-red-500/10 items-center justify-center">
+                  <Ionicons name="calendar-outline" size={15} color="#FF2D55" />
+                </View>
+                <View>
+                  <Text className="text-white text-xs font-bold">
+                    {formatHumanReadableDate(selectedDate)}
+                  </Text>
+                  <Text className="text-zinc-500 text-[10px]">
+                    Tap to open calendar picker ({selectedDate})
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color="#71717A" />
+            </TouchableOpacity>
+
+            {/* Quick Date selection chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-3">
+              <View className="flex-row gap-1.5">
+                {QUICK_DATE_PRESETS.map((p) => {
+                  const targetDateStr = getOffsetDateString(p.offset);
+                  const isSel = selectedDate === targetDateStr;
+                  return (
+                    <TouchableOpacity
+                      key={p.label}
+                      onPress={() => setSelectedDate(targetDateStr)}
+                      className={`px-3 py-1.5 rounded-lg border ${
+                        isSel ? 'bg-red-500 border-red-500' : 'bg-zinc-950 border-zinc-800'
+                      }`}
+                    >
+                      <Text className={`text-[11px] font-semibold ${isSel ? 'text-white' : 'text-zinc-400'}`}>
+                        {p.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            {/* Planned Departure Time Slot */}
+            <Text className="text-zinc-400 text-[10px] font-bold uppercase tracking-wider mb-1.5">
+              Planned Departure Time
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View className="flex-row gap-2">
+                {TIME_WINDOWS.map((t) => {
+                  const sel = selectedTime === t;
+                  return (
+                    <TouchableOpacity
+                      key={t}
+                      onPress={() => setSelectedTime(t)}
+                      className={`px-3 py-1.5 rounded-lg border ${
+                        sel ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-950 border-zinc-850'
+                      }`}
+                    >
+                      <Text className={`text-xs font-medium ${sel ? 'text-white font-bold' : 'text-zinc-400'}`}>{t}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+
           <TouchableOpacity
             className="bg-red-500 active:bg-red-600 rounded-xl py-3.5 items-center mt-2 shadow-lg shadow-red-500/20"
             onPress={handleOptimize}
@@ -382,49 +490,34 @@ export default function DispatchScreen() {
             {analyzing ? (
               <View className="flex-row items-center gap-2">
                 <ActivityIndicator color="white" size="small" />
-                <Text className="text-white font-bold text-xs">Simulating Route Telemetry…</Text>
+                <Text className="text-white font-bold text-xs">Simulating Route Windows Around {selectedDate}…</Text>
               </View>
             ) : (
               <Text className="text-white font-bold text-xs uppercase tracking-wider">
-                Analyze 5-Day Windows & Traffic Risk
+                Analyze Dispatch Windows Around Planned Date
               </Text>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Planned Dispatch Date & Time Selection */}
+        {/* Departure Windows Around Planned Date Selection */}
         {candidates && (
           <View className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 mb-6">
-            <Text className="text-white font-bold text-sm mb-1">Your Planned Departure Window</Text>
-            <Text className="text-zinc-500 text-xs mb-3">
-              Select or type your planned departure date and time slot to receive customized corridor risk analysis.
+            <View className="flex-row justify-between items-center mb-1">
+              <Text className="text-white font-bold text-sm">Windows Around Planned Date ({selectedDate})</Text>
+              <View className="bg-red-500/10 px-2.5 py-0.5 rounded-md border border-red-500/20">
+                <Text className="text-red-400 text-[10px] font-bold">5-DAY WINDOW</Text>
+              </View>
+            </View>
+            <Text className="text-zinc-400 text-xs mb-3">
+              Options around your target dispatch date ranked by weather risk. Tap any day to inspect.
             </Text>
-
-            {/* Explicit Date Input Field */}
-            <Text className="text-zinc-400 text-[10px] font-bold uppercase tracking-wider mb-1.5">
-              Target Dispatch Date (YYYY-MM-DD)
-            </Text>
-            <TextInput
-              className="bg-zinc-950 border border-zinc-800 text-white rounded-xl px-4 py-2.5 text-xs mb-3 font-mono"
-              value={selectedDate}
-              onChangeText={(text) => {
-                setSelectedDate(text);
-                if (candidates) {
-                  generateAiInsights(candidates, text, selectedTime);
-                }
-              }}
-              placeholder="e.g. 2026-11-21"
-              placeholderTextColor="#71717A"
-            />
 
             {/* Quick Date selection chips */}
-            <Text className="text-zinc-400 text-[10px] font-bold uppercase tracking-wider mb-2">
-              Quick Select From 5-Day Forecast
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-3">
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-1">
               <View className="flex-row gap-2">
                 {candidates.map((c) => {
-                  const sel = selectedDate === c.date;
+                  const isUserPlanned = selectedDate === c.date;
                   return (
                     <TouchableOpacity
                       key={c.date}
@@ -433,35 +526,18 @@ export default function DispatchScreen() {
                         generateAiInsights(candidates, c.date, selectedTime);
                       }}
                       className={`px-3 py-2 rounded-xl border ${
-                        sel ? 'bg-red-500 border-red-500' : 'bg-zinc-950 border-zinc-800'
+                        isUserPlanned ? 'bg-red-500 border-red-500' : 'bg-zinc-950 border-zinc-800'
                       }`}
                     >
-                      <Text className={`text-xs font-bold ${sel ? 'text-white' : 'text-zinc-300'}`}>{c.dayName}</Text>
-                      <Text className={`text-[10px] ${sel ? 'text-white/80' : 'text-zinc-500'}`}>Risk: {c.riskScore}%</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-
-            {/* Time selection chips */}
-            <Text className="text-zinc-400 text-[10px] font-bold uppercase tracking-wider mb-2">Planned Time Slot</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View className="flex-row gap-2">
-                {TIME_WINDOWS.map((t) => {
-                  const sel = selectedTime === t;
-                  return (
-                    <TouchableOpacity
-                      key={t}
-                      onPress={() => {
-                        setSelectedTime(t);
-                        generateAiInsights(candidates, selectedDate || candidates[0].date, t);
-                      }}
-                      className={`px-3 py-1.5 rounded-lg border ${
-                        sel ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-950 border-zinc-850'
-                      }`}
-                    >
-                      <Text className={`text-xs font-medium ${sel ? 'text-white font-bold' : 'text-zinc-400'}`}>{t}</Text>
+                      <View className="flex-row items-center gap-1.5">
+                        <Text className={`text-xs font-bold ${isUserPlanned ? 'text-white' : 'text-zinc-300'}`}>{c.dayName}</Text>
+                        {isUserPlanned && (
+                          <View className="bg-white/20 px-1.5 py-0.2 rounded">
+                            <Text className="text-[9px] font-bold text-white">PLANNED</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text className={`text-[10px] mt-0.5 ${isUserPlanned ? 'text-white/80' : 'text-zinc-500'}`}>Risk: {c.riskScore}% • {c.precipitation}mm</Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -614,6 +690,20 @@ export default function DispatchScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Interactive Calendar Date Picker Modal */}
+      <CalendarDatePickerModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        selectedDate={selectedDate}
+        onSelectDate={(newDate) => {
+          setSelectedDate(newDate);
+          if (candidates) {
+            generateAiInsights(candidates, newDate, selectedTime);
+          }
+        }}
+        title="Select Planned Dispatch Date"
+      />
     </SafeAreaView>
   );
 }
