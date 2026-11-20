@@ -35,9 +35,9 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export async function uploadVideo(uri: string, filename: string, fps: number, onProgress?: (progress: number) => void): Promise<string> {
-  const activeModel = await getSelectedModel().catch(() => 'best');
   const thresholds = await getConfidenceThresholds();
-  const confidenceThreshold = activeModel === 'latest' ? thresholds.latest : thresholds.best;
+  // Video inspection strictly uses best.pt (Packaging defect model) as before
+  const confidenceThreshold = thresholds.best;
 
   const task = FileSystem.createUploadTask(`${VIDEO_ENDPOINT}/upload`, uri, {
     httpMethod: 'POST',
@@ -46,7 +46,7 @@ export async function uploadVideo(uri: string, filename: string, fps: number, on
     mimeType: filename.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4',
     parameters: {
       extraction_fps: String(fps),
-      model: activeModel,
+      model: 'best',
       confidence_threshold: String(confidenceThreshold),
     },
     headers: { Accept: 'application/json' },

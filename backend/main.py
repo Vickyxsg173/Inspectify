@@ -1078,28 +1078,23 @@ def process_video_inspection_job(job_id: str, video_path: str, extraction_fps: i
                 primary_label = "Damaged"
                 max_conf_this_frame = 0.0
 
-                # 1. Inspect with packaging defect model (best.pt or latest_model_defect.pt)
+                # 1. Inspect strictly with packaging defect model (best.pt only as requested)
                 try:
-                    active_pkg_model = model_latest if (active_detection_model == "latest" and model_latest is not None) else model_yolo
-                    if active_pkg_model is not None:
-                        pkg_conf = min(0.05, confidence_threshold) if active_pkg_model == model_yolo else confidence_threshold
-                        yolo_res = active_pkg_model(frame, imgsz=960, conf=pkg_conf, verbose=False)
+                    if model_yolo is not None:
+                        pkg_conf = min(0.05, confidence_threshold)
+                        yolo_res = model_yolo(frame, imgsz=640, conf=pkg_conf, verbose=False)
                         if len(yolo_res) > 0 and len(yolo_res[0].boxes) > 0:
                             for box in yolo_res[0].boxes:
                                 cls_id = int(box.cls[0])
                                 conf = float(box.conf[0])
-                                is_defect = (cls_id == 0) if active_pkg_model == model_yolo else True
-                                if is_defect and conf >= pkg_conf:
+                                if cls_id == 0 and conf >= pkg_conf:
                                     found_defect = True
                                     max_conf_this_frame = max(max_conf_this_frame, conf)
                                     xyxy = box.xyxy[0].cpu().numpy().astype(int)
-                                    box_lbl = "DAMAGED"
-                                    if active_pkg_model == model_latest and hasattr(model_latest, "names"):
-                                        box_lbl = model_latest.names.get(cls_id, "defect").upper()
-                                    lbl = f"{box_lbl} {int(conf * 100)}%"
-                                    primary_label = box_lbl.capitalize()
+                                    lbl = f"DAMAGED {int(conf * 100)}%"
+                                    primary_label = "Damaged"
                                     current_boxes.append((xyxy[0], xyxy[1], xyxy[2], xyxy[3], lbl, conf))
-                                    defect_categories_dict[box_lbl.capitalize()] = max(defect_categories_dict.get(box_lbl.capitalize(), 0.0), conf)
+                                    defect_categories_dict["Packaging Damage"] = max(defect_categories_dict.get("Packaging Damage", 0.0), conf)
                 except Exception as ye:
                     print("YOLO video frame error:", ye)
 
@@ -1267,12 +1262,7 @@ async def upload_video_inspection(
     except (ValueError, TypeError):
         conf_thresh = 0.20
 
-    # Update active model based on request if provided
-    global active_detection_model
-    if model and model.lower() in ("latest", "latest_model", "latest_model_defect"):
-        active_detection_model = "latest"
-    elif model and model.lower() in ("best",):
-        active_detection_model = "best"
+    # Video inspection strictly uses best.pt (Packaging defect model) and does not alter global active_detection_model
 
     base_url = str(request.base_url)
 
