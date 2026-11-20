@@ -44,6 +44,7 @@ import {
 } from '@/services/videoInspectionApi';
 import { saveScan } from '@/utils/scanStorage';
 import { getSelectedModel, AVAILABLE_MODELS } from '@/utils/modelStorage';
+import { getConfidenceThresholds, DEFAULT_THRESHOLDS } from '@/utils/confidenceStorage';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 
@@ -123,6 +124,8 @@ export default function LiveVideoScreen() {
   const [capturing, setCapturing] = useState(false);
   const [fpsCount, setFpsCount] = useState(0);
   const [activeModelName, setActiveModelName] = useState('Standard');
+  // Video bounding box display threshold (loaded from Settings)
+  const [videoBoxThreshold, setVideoBoxThreshold] = useState<number>(DEFAULT_THRESHOLDS.videoBox);
   const cameraRef = useRef<CameraView>(null);
   const isLoopRunning = useRef(false);
   const activeStream = useRef(true);
@@ -135,6 +138,8 @@ export default function LiveVideoScreen() {
         const match = AVAILABLE_MODELS.find((m) => m.id === id);
         if (match) setActiveModelName(match.name);
       });
+      // Reload videoBox threshold whenever the screen is focused (user may have changed in Settings)
+      getConfidenceThresholds().then((t) => setVideoBoxThreshold(t.videoBox ?? DEFAULT_THRESHOLDS.videoBox));
     }, [])
   );
 
@@ -836,14 +841,27 @@ export default function LiveVideoScreen() {
               )}
 
               {/* Defect Markers */}
-              {results.defect_timestamps && results.defect_timestamps.length > 0 && (
+              {results.defect_timestamps && results.defect_timestamps.length > 0 && (() => {
+                // Filter timestamps by videoBoxThreshold — only show boxes with confidence above the slider
+                const filteredTimestamps = results.defect_timestamps.filter(
+                  (t) => !t.confidence || t.confidence >= videoBoxThreshold
+                );
+                if (filteredTimestamps.length === 0) return null;
+                return (
                 <View style={[vs.card, { backgroundColor: cardBg, borderColor }]}>
-                  <Text style={[vs.sectionLabel, { color: textPrimary, marginBottom: 10 }]}>
-                    Damage Timestamps ({results.defect_timestamps.length})
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <Text style={[vs.sectionLabel, { color: textPrimary }]}>
+                      Damage Timestamps ({filteredTimestamps.length})
+                    </Text>
+                    {filteredTimestamps.length < results.defect_timestamps.length && (
+                      <Text style={{ fontSize: 10, color: '#71717A', fontWeight: '600' }}>
+                        {results.defect_timestamps.length - filteredTimestamps.length} hidden &lt;{Math.round(videoBoxThreshold * 100)}%
+                      </Text>
+                    )}
+                  </View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     <View style={vs.timelineRow}>
-                      {results.defect_timestamps.map((t, idx) => (
+                      {filteredTimestamps.map((t, idx) => (
                         <Pressable
                           key={idx}
                           onPress={() => {
@@ -874,7 +892,8 @@ export default function LiveVideoScreen() {
                     </View>
                   </ScrollView>
                 </View>
-              )}
+                );
+              })()}
             </View>
           )}
         </ScrollView>

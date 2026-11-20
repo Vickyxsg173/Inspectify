@@ -21,7 +21,7 @@ import {
   ScanRecord,
   setAutoSaveSetting,
 } from '@/utils/scanStorage';
-import Slider from '@react-native-community/slider';
+import LiquidGlassSlider from '@/components/LiquidGlassSlider';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Camera,
@@ -36,8 +36,10 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sliders,
+  Smartphone,
   Trash2,
   User,
+  Video,
   X,
   Info,
 } from 'lucide-react-native';
@@ -51,6 +53,7 @@ import {
   Switch,
   Text,
   TextInput,
+  useColorScheme,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -64,6 +67,8 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { user, session, accountType, companyName, signOut } = useAuth();
   const isCompany = accountType === 'company';
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('preferences');
 
@@ -78,6 +83,8 @@ export default function SettingsScreen() {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [threshBest, setThreshBest] = useState<number>(DEFAULT_THRESHOLDS.best);
   const [threshLatest, setThreshLatest] = useState<number>(DEFAULT_THRESHOLDS.latest);
+  const [threshScreen, setThreshScreen] = useState<number>(DEFAULT_THRESHOLDS.screen);
+  const [threshVideoBox, setThreshVideoBox] = useState<number>(DEFAULT_THRESHOLDS.videoBox);
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
   const [autoSave, setAutoSave] = useState(true);
   const [highPrecision, setHighPrecision] = useState(false);
@@ -101,6 +108,8 @@ export default function SettingsScreen() {
     const thresholds = await getConfidenceThresholds();
     setThreshBest(thresholds.best);
     setThreshLatest(thresholds.latest);
+    setThreshScreen(thresholds.screen);
+    setThreshVideoBox(thresholds.videoBox);
 
     const history = await getScanHistory();
     setHistoryList(history);
@@ -116,22 +125,32 @@ export default function SettingsScreen() {
     await saveSelectedModel(modelId);
   };
 
-  const handleThresholdChange = async (modelKey: 'best' | 'latest', value: number) => {
+  const handleThresholdChange = async (
+    key: 'best' | 'latest' | 'screen' | 'videoBox',
+    value: number
+  ) => {
     const rounded = Math.round(value * 100) / 100;
-    if (modelKey === 'best') {
-      setThreshBest(rounded);
-      await saveConfidenceThresholds({ best: rounded, latest: threshLatest });
-    } else {
-      setThreshLatest(rounded);
-      await saveConfidenceThresholds({ best: threshBest, latest: rounded });
-    }
+    const next = {
+      best: threshBest,
+      latest: threshLatest,
+      screen: threshScreen,
+      videoBox: threshVideoBox,
+      [key]: rounded,
+    };
+    if (key === 'best') setThreshBest(rounded);
+    else if (key === 'latest') setThreshLatest(rounded);
+    else if (key === 'screen') setThreshScreen(rounded);
+    else if (key === 'videoBox') setThreshVideoBox(rounded);
+    await saveConfidenceThresholds(next);
   };
 
   const handleResetToDefaults = async () => {
     setThreshBest(DEFAULT_THRESHOLDS.best);
     setThreshLatest(DEFAULT_THRESHOLDS.latest);
+    setThreshScreen(DEFAULT_THRESHOLDS.screen);
+    setThreshVideoBox(DEFAULT_THRESHOLDS.videoBox);
     await saveConfidenceThresholds(DEFAULT_THRESHOLDS);
-    setSavedBanner('Reset to calibrated optimum thresholds (12% / 25%)');
+    setSavedBanner('Reset all thresholds to calibrated defaults');
     setTimeout(() => setSavedBanner(null), 3000);
   };
 
@@ -406,22 +425,23 @@ export default function SettingsScreen() {
                   )}
                 </View>
 
-                {/* Confidence Thresholds Header with Reset Button Inside Box */}
-                <View className="mb-6 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-                  <View className="flex-row justify-between items-center mb-2">
+                {/* ── Confidence Thresholds ─────────────────────────── */}
+                <View style={{ marginBottom: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: isDark ? '#27272A' : '#E4E4E7' }}>
+                  {/* Header row */}
+                  <View className="flex-row justify-between items-center mb-3">
                     <View className="flex-1 pr-2">
                       <Text className="text-black dark:text-white font-bold text-sm">
                         Confidence Thresholds
                       </Text>
                       <Text className="text-zinc-500 dark:text-zinc-400 text-xs">
-                        Controls detection sensitivity
+                        Slide to adjust • defaults are pre-calibrated
                       </Text>
                     </View>
                     <Pressable
                       onPress={handleResetToDefaults}
                       className="bg-red-500/10 border border-red-500/25 px-2.5 py-1.5 rounded-lg active:opacity-75"
                     >
-                      <Text className="text-xs font-bold text-[#FF2D55]">Reset Defaults</Text>
+                      <Text className="text-xs font-bold text-[#FF2D55]">Reset All</Text>
                     </Pressable>
                   </View>
 
@@ -432,48 +452,185 @@ export default function SettingsScreen() {
                     </View>
                   )}
 
-                  {/* 1. Standard Model (best.pt) Threshold Slider */}
-                  <View className="bg-zinc-50 dark:bg-zinc-900/70 p-3.5 rounded-2xl mb-3 border border-zinc-200/80 dark:border-zinc-800">
-                    <View className="flex-row justify-between items-center mb-1">
-                      <Text className="text-black dark:text-white font-bold text-xs">
-                        Standard Model (best.pt)
-                      </Text>
-                      <Text className="text-[#FF2D55] font-black text-xs font-mono">
-                        {(threshBest * 100).toFixed(0)}%
-                      </Text>
+                  {/* ── Liquid Glass Card ─────────────────────────────── */}
+                  <View style={{
+                    borderRadius: 20,
+                    overflow: 'hidden',
+                    backgroundColor: isDark ? 'rgba(18,18,22,0.85)' : 'rgba(240,240,245,0.85)',
+                    borderWidth: 1,
+                    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: isDark ? 0.4 : 0.12,
+                    shadowRadius: 18,
+                    elevation: 10,
+                  }}>
+                    {/* Top shimmer stripe */}
+                    <View style={{
+                      height: 1.5,
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.80)',
+                      marginHorizontal: 20,
+                    }} />
+
+                    <View style={{ padding: 18, gap: 20 }}>
+
+                      {/* 1 ── Standard Model (best.pt) ──────────────── */}
+                      <View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                          <View style={{
+                            width: 28, height: 28, borderRadius: 8,
+                            backgroundColor: 'rgba(255,45,85,0.14)',
+                            borderWidth: 1, borderColor: 'rgba(255,45,85,0.28)',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <Layers size={15} color="#FF2D55" />
+                          </View>
+                          <Text style={{ color: isDark ? '#E4E4E7' : '#18181B', fontWeight: '800', fontSize: 13 }}>
+                            Standard Model
+                          </Text>
+                          <View style={{ flex: 1 }} />
+                          <View style={{
+                            backgroundColor: 'rgba(255,45,85,0.10)', paddingHorizontal: 7, paddingVertical: 2,
+                            borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,45,85,0.20)',
+                          }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#FF2D55' }}>best.pt</Text>
+                          </View>
+                        </View>
+                        <LiquidGlassSlider
+                          value={threshBest}
+                          label="Detection threshold"
+                          sublabel="Min confidence to flag a packaging defect"
+                          defaultValue={DEFAULT_THRESHOLDS.best}
+                          min={0.05} max={0.90} step={0.01}
+                          accentColor="#FF2D55"
+                          onChange={(v) => handleThresholdChange('best', v)}
+                        />
+                      </View>
+
+                      {/* Divider */}
+                      <View style={{ height: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)' }} />
+
+                      {/* 2 ── Latest Multi-Defect Model ──────────────── */}
+                      <View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                          <View style={{
+                            width: 28, height: 28, borderRadius: 8,
+                            backgroundColor: 'rgba(168,85,247,0.14)',
+                            borderWidth: 1, borderColor: 'rgba(168,85,247,0.28)',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <Layers size={15} color="#A855F7" />
+                          </View>
+                          <Text style={{ color: isDark ? '#E4E4E7' : '#18181B', fontWeight: '800', fontSize: 13 }}>
+                            Multi-Defect Model
+                          </Text>
+                          <View style={{ flex: 1 }} />
+                          <View style={{
+                            backgroundColor: 'rgba(168,85,247,0.10)', paddingHorizontal: 7, paddingVertical: 2,
+                            borderRadius: 8, borderWidth: 1, borderColor: 'rgba(168,85,247,0.20)',
+                          }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#A855F7' }}>latest.pt</Text>
+                          </View>
+                        </View>
+                        <LiquidGlassSlider
+                          value={threshLatest}
+                          label="Detection threshold"
+                          sublabel="Min confidence for multi-defect classification"
+                          defaultValue={DEFAULT_THRESHOLDS.latest}
+                          min={0.05} max={0.90} step={0.01}
+                          accentColor="#A855F7"
+                          onChange={(v) => handleThresholdChange('latest', v)}
+                        />
+                      </View>
+
+                      {/* Divider */}
+                      <View style={{ height: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)' }} />
+
+                      {/* 3 ── Screen Scratch Model ───────────────────── */}
+                      <View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                          <View style={{
+                            width: 28, height: 28, borderRadius: 8,
+                            backgroundColor: 'rgba(6,182,212,0.14)',
+                            borderWidth: 1, borderColor: 'rgba(6,182,212,0.28)',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <Smartphone size={15} color="#06B6D4" />
+                          </View>
+                          <Text style={{ color: isDark ? '#E4E4E7' : '#18181B', fontWeight: '800', fontSize: 13 }}>
+                            Screen Scratch Model
+                          </Text>
+                          <View style={{ flex: 1 }} />
+                          <View style={{
+                            backgroundColor: 'rgba(6,182,212,0.10)', paddingHorizontal: 7, paddingVertical: 2,
+                            borderRadius: 8, borderWidth: 1, borderColor: 'rgba(6,182,212,0.20)',
+                          }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#06B6D4' }}>screen.pt</Text>
+                          </View>
+                        </View>
+                        <LiquidGlassSlider
+                          value={threshScreen}
+                          label="Detection threshold"
+                          sublabel="Hairline scratches score 6-10% — keep below 10%"
+                          defaultValue={DEFAULT_THRESHOLDS.screen}
+                          min={0.03} max={0.30} step={0.01}
+                          accentColor="#06B6D4"
+                          onChange={(v) => handleThresholdChange('screen', v)}
+                        />
+                      </View>
+
+                      {/* Divider */}
+                      <View style={{ height: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)' }} />
+
+                      {/* 4 ── Video Bounding Box Display Threshold ───── */}
+                      <View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                          <View style={{
+                            width: 28, height: 28, borderRadius: 8,
+                            backgroundColor: 'rgba(251,146,60,0.14)',
+                            borderWidth: 1, borderColor: 'rgba(251,146,60,0.28)',
+                            alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            <Video size={15} color="#FB923C" />
+                          </View>
+                          <Text style={{ color: isDark ? '#E4E4E7' : '#18181B', fontWeight: '800', fontSize: 13 }}>
+                            Video Box Display
+                          </Text>
+                          <View style={{ flex: 1 }} />
+                          <View style={{
+                            backgroundColor: 'rgba(251,146,60,0.10)', paddingHorizontal: 7, paddingVertical: 2,
+                            borderRadius: 8, borderWidth: 1, borderColor: 'rgba(251,146,60,0.20)',
+                          }}>
+                            <Text style={{ fontSize: 10, fontWeight: '700', color: '#FB923C' }}>Video</Text>
+                          </View>
+                        </View>
+                        <LiquidGlassSlider
+                          value={threshVideoBox}
+                          label="Min confidence to show bounding box"
+                          sublabel="Hides low-confidence boxes in video overlay"
+                          defaultValue={DEFAULT_THRESHOLDS.videoBox}
+                          min={0.05} max={0.90} step={0.01}
+                          accentColor="#FB923C"
+                          onChange={(v) => handleThresholdChange('videoBox', v)}
+                        />
+                      </View>
+
                     </View>
-                    <Slider
-                      value={threshBest}
-                      onValueChange={(val) => handleThresholdChange('best', val)}
-                      minimumValue={0.05}
-                      maximumValue={0.9}
-                      step={0.01}
-                      minimumTrackTintColor="#FF2D55"
-                      maximumTrackTintColor={selectedModel === 'best' ? '#3F3F46' : '#27272A'}
-                      thumbTintColor="#FF2D55"
-                    />
+
+                    {/* Bottom shimmer stripe */}
+                    <View style={{
+                      height: 1,
+                      backgroundColor: isDark ? 'rgba(0,0,0,0.30)' : 'rgba(0,0,0,0.05)',
+                      marginHorizontal: 20,
+                    }} />
                   </View>
 
-                  {/* 2. Latest Multi-Defect Model Threshold Slider */}
-                  <View className="bg-zinc-50 dark:bg-zinc-900/70 p-3.5 rounded-2xl border border-zinc-200/80 dark:border-zinc-800">
-                    <View className="flex-row justify-between items-center mb-1">
-                      <Text className="text-black dark:text-white font-bold text-xs">
-                        Latest Multi-Defect (latest_model_defect.pt)
-                      </Text>
-                      <Text className="text-[#FF2D55] font-black text-xs font-mono">
-                        {(threshLatest * 100).toFixed(0)}%
-                      </Text>
-                    </View>
-                    <Slider
-                      value={threshLatest}
-                      onValueChange={(val) => handleThresholdChange('latest', val)}
-                      minimumValue={0.05}
-                      maximumValue={0.9}
-                      step={0.01}
-                      minimumTrackTintColor="#FF2D55"
-                      maximumTrackTintColor="#3F3F46"
-                      thumbTintColor="#FF2D55"
-                    />
+                  {/* Info note */}
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 10, paddingHorizontal: 4 }}>
+                    <Info size={12} color="#52525B" />
+                    <Text style={{ fontSize: 10.5, color: '#71717A', flex: 1, lineHeight: 15, fontWeight: '500' }}>
+                      Default thresholds are empirically calibrated. Increase to reduce false positives; decrease to catch more subtle defects.
+                    </Text>
                   </View>
                 </View>
 

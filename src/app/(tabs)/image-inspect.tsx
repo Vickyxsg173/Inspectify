@@ -266,8 +266,8 @@ export default function ImageInspectScreen() {
     try {
       const thresholds = await getConfidenceThresholds();
       const selectedModel = await getSelectedModel();
-      const confidenceThreshold =
-        selectedModel === 'latest' ? thresholds.latest : thresholds.best;
+      // Use the packaging model's own threshold (best or latest, not screen)
+      const confidenceThreshold = selectedModel === 'latest' ? thresholds.latest : thresholds.best;
       const activeModelObj = AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
 
       let isDefect = false;
@@ -455,8 +455,8 @@ export default function ImageInspectScreen() {
     try {
       const thresholds = await getConfidenceThresholds();
       const selectedModel = await getSelectedModel();
-      const confidenceThreshold =
-        selectedModel === 'latest' ? thresholds.latest : thresholds.best;
+      // Screen scratch model uses its own dedicated threshold (not the packaging model threshold)
+      const confidenceThreshold = thresholds.screen ?? 0.08;
       const activeModelObj = AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
 
       let isDefect = false;
