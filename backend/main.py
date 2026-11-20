@@ -330,36 +330,49 @@ def split_into_tiles(image_path, rows=3, cols=3):
 
     return tiles
 
-def analyze_image_with_yolo(image_path: str, confidence_threshold: float = 0.20):
+def analyze_image_with_yolo(image_path: str, confidence_threshold: float = 0.05):
     try:
-        # Pass confidence threshold directly to YOLO so detections below 0.25 aren't dropped by default
-        results = model_yolo(image_path, conf=confidence_threshold)
+        conf_val = max(0.02, min(0.95, confidence_threshold))
+        
+        # Run YOLO with imgsz=1024 for high-resolution defect capture (crushed corners, creases, small tears)
+        # Using conf=min(0.04, conf_val) ensures YOLO internal NMS retains candidate defect boxes
+        internal_conf = min(0.04, conf_val)
+        results = model_yolo(image_path, imgsz=1024, conf=internal_conf, verbose=False)
+        
+        detections = results[0].boxes
+        img = cv2.imread(image_path)
+        if img is None and results[0].orig_img is not None:
+            img = results[0].orig_img.copy()
+        h, w = img.shape[:2] if img is not None else (1, 1)
+        
+        # If no boxes at 1024, fallback to standard 640
+        if len(detections) == 0:
+            results_640 = model_yolo(image_path, imgsz=640, conf=internal_conf, verbose=False)
+            detections = results_640[0].boxes
         
         base, ext = os.path.splitext(image_path)
         annotated_path = f"{base}_annotated{ext}"
-        results[0].save(filename=annotated_path)
-        annotated_filename = os.path.basename(annotated_path)
-        
-        detections = results[0].boxes
-        img = results[0].orig_img
-        h, w = img.shape[:2] if img is not None else (1, 1)
         
         has_defect = False
         max_defect_conf = 0.0
         defect_count = 0
         defects = []
         
+        annotated_img = img.copy() if img is not None else None
+        
         if len(detections) > 0:
             for i, box in enumerate(detections):
                 cls_id = int(box.cls[0])
                 conf = float(box.conf[0])
-                if cls_id == 0 and conf >= confidence_threshold:
+                # In best.pt: cls 0 is 'damaged', cls 1 is 'intact'
+                if cls_id == 0 and conf >= conf_val:
                     has_defect = True
                     defect_count += 1
                     if conf > max_defect_conf:
                         max_defect_conf = conf
                     xyxy = box.xyxy[0].cpu().numpy().astype(int)
                     x1, y1, x2, y2 = int(xyxy[0]), int(xyxy[1]), int(xyxy[2]), int(xyxy[3])
+                    
                     defects.append({
                         "id": f"pkg_{i}",
                         "label": "DAMAGED",
@@ -373,6 +386,29 @@ def analyze_image_with_yolo(image_path: str, confidence_threshold: float = 0.20)
                         ],
                         "box_pixels": [x1, y1, x2, y2]
                     })
+                    
+                    # Draw custom high-visibility bounding box and label badge
+                    if annotated_img is not None:
+                        # Draw bounding box
+                        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 240), 3)
+                        # Corner brackets
+                        corner_len = max(10, min(30, int(min(x2 - x1, y2 - y1) * 0.25)))
+                        for (cx, cy, dx, dy) in [(x1, y1, 1, 1), (x2, y1, -1, 1), (x1, y2, 1, -1), (x2, y2, -1, -1)]:
+                            cv2.line(annotated_img, (cx, cy), (cx + dx * corner_len, cy), (0, 0, 255), 4)
+                            cv2.line(annotated_img, (cx, cy), (cx, cy + dy * corner_len), (0, 0, 255), 4)
+                        # Label text
+                        badge_text = f"DAMAGED {int(conf * 100)}%"
+                        (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                        badge_y1 = max(0, y1 - 26)
+                        cv2.rectangle(annotated_img, (x1, badge_y1), (x1 + tw + 12, y1), (0, 0, 210), -1)
+                        cv2.putText(annotated_img, badge_text, (x1 + 6, max(18, y1 - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+        if annotated_img is not None:
+            cv2.imwrite(annotated_path, annotated_img)
+        else:
+            results[0].save(filename=annotated_path)
+            
+        annotated_filename = os.path.basename(annotated_path)
 
         if has_defect:
             return {
@@ -490,20 +526,20 @@ def analyze_image_with_latest_model(image_path: str, confidence_threshold: float
         res["fallback_reason"] = f"latest model error: {str(e)}"
         return res
 
-def analyze_image_with_selected_model(image_path: str, model_type: Optional[str] = None, confidence_threshold: float = 0.12):
+def analyze_image_with_selected_model(image_path: str, model_type: Optional[str] = None, confidence_threshold: float = 0.05):
     """
     Strict single-model execution matching user's Settings selection.
     If 'latest' is selected: uses exclusively latest_model_defect.pt.
     If 'best' (standard) is selected: uses exclusively best.pt.
     """
     choice = (model_type or active_detection_model or "best").lower().strip()
-    conf_thresh = max(0.05, min(0.95, confidence_threshold))
+    conf_thresh = max(0.02, min(0.95, confidence_threshold))
 
     # User selected Latest Defect Model: use ONLY latest_model_defect.pt
     if choice in ("latest", "latest_model", "latest_model_defect", "latest_model_defect.pt"):
         return analyze_image_with_latest_model(image_path, conf_thresh)
 
-    # User selected Standard Model: use ONLY best.pt
+    # User selected Standard Model: use ONLY best.pt (calibrated threshold)
     res = analyze_image_with_yolo(image_path, conf_thresh)
     res["model_used"] = "best.pt"
     return res
@@ -699,13 +735,13 @@ async def upload(
 
     chosen_model = model or model_name or active_detection_model
 
-    # Parse confidence threshold from query or form; default to 0.12 if not provided/invalid
+    # Parse confidence threshold from query or form; default to 0.05 for best.pt, 0.20 for latest
     raw_conf = confidence_threshold or confidence_threshold_form
     try:
-        conf_thresh = float(raw_conf) if raw_conf else 0.12
-        conf_thresh = max(0.05, min(0.95, conf_thresh))  # clamp to safe range
+        conf_thresh = float(raw_conf) if raw_conf else (0.20 if chosen_model == "latest" else 0.05)
+        conf_thresh = max(0.02, min(0.95, conf_thresh))  # clamp to safe range
     except (ValueError, TypeError):
-        conf_thresh = 0.12
+        conf_thresh = 0.05 if chosen_model == "best" else 0.20
 
     try:
         analysis = analyze_image_with_selected_model(path, chosen_model, conf_thresh)
@@ -976,13 +1012,14 @@ def process_video_inspection_job(job_id: str, video_path: str, extraction_fps: i
                 try:
                     active_pkg_model = model_latest if (active_detection_model == "latest" and model_latest is not None) else model_yolo
                     if active_pkg_model is not None:
-                        yolo_res = active_pkg_model(frame, conf=confidence_threshold, verbose=False)
+                        pkg_conf = min(0.05, confidence_threshold) if active_pkg_model == model_yolo else confidence_threshold
+                        yolo_res = active_pkg_model(frame, imgsz=960, conf=pkg_conf, verbose=False)
                         if len(yolo_res) > 0 and len(yolo_res[0].boxes) > 0:
                             for box in yolo_res[0].boxes:
                                 cls_id = int(box.cls[0])
                                 conf = float(box.conf[0])
                                 is_defect = (cls_id == 0) if active_pkg_model == model_yolo else True
-                                if is_defect and conf >= confidence_threshold:
+                                if is_defect and conf >= pkg_conf:
                                     found_defect = True
                                     max_conf_this_frame = max(max_conf_this_frame, conf)
                                     xyxy = box.xyxy[0].cpu().numpy().astype(int)
