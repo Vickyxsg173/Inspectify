@@ -8,21 +8,21 @@ export interface ConfidenceThresholds {
 }
 
 /**
- * Empirically calibrated optimal defaults:
+ * Empirically calibrated optimal defaults (restored to green UI baseline):
  *
  * 1. best.pt (Standard Model):
  *    - Has 2 classes: damaged (0) and intact (1).
- *    - Subtle corner damage, creasing, and fine paper separation score ~0.05 - 0.20.
- *    - Optimum calibrated threshold: 0.05 (5%).
+ *    - Subtle corner damage, creasing, and fine paper separation score ~0.13 - 0.18.
+ *    - Optimum calibrated threshold: 0.12 (12%).
  *
  * 2. latest_model_defect.pt (Latest Defect Model):
  *    - Multi-class model (crushed box corner, dented packaging, screen scratch, etc.).
- *    - Corner crush on fine packaging scores ~0.20 - 0.36.
- *    - Optimum calibrated threshold: 0.20 (20%).
+ *    - Corner crush on fine packaging scores ~0.36.
+ *    - Optimum calibrated threshold: 0.25 (25%).
  */
 export const DEFAULT_THRESHOLDS: ConfidenceThresholds = {
-  best: 0.05,
-  latest: 0.20,
+  best: 0.12,
+  latest: 0.25,
 };
 
 const CONFIDENCE_KEY = '@inspectify_confidence_thresholds';
