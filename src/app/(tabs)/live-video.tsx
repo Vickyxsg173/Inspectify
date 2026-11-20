@@ -7,6 +7,7 @@ import {
   Alert,
   ScrollView,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, CameraType } from 'expo-camera';
@@ -27,6 +28,7 @@ import {
   FileVideo2,
   Upload,
   Share2,
+  Download,
   Clock3,
   Video,
   Cctv,
@@ -308,7 +310,69 @@ export default function LiveVideoScreen() {
     }
   };
 
-  const shareReport = async () => {
+  const [isExportingVideo, setIsExportingVideo] = useState(false);
+
+  const exportAnnotatedVideo = async () => {
+    const rawVideoUrl = results?.annotated_video_url;
+    if (!rawVideoUrl && !video?.uri) {
+      Alert.alert('No Video Available', 'Please complete a video inspection first.');
+      return;
+    }
+
+    setIsExportingVideo(true);
+    try {
+      const resolvedUrl = rawVideoUrl ? resolveMediaUrl(rawVideoUrl) : video!.uri;
+
+      if (Platform.OS === 'web') {
+        const link = document.createElement('a');
+        link.href = resolvedUrl;
+        link.download = `inspected_${results?.inspection_id || 'video'}.mp4`;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setIsExportingVideo(false);
+        return;
+      }
+
+      let localUri = resolvedUrl;
+
+      // If remote URL, download it locally to cache directory first
+      if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
+        const safeId = results?.inspection_id || Date.now();
+        const filename = `inspected_annotated_${safeId}.mp4`;
+        const targetPath = `${FileSystem.cacheDirectory}${filename}`;
+
+        const info = await FileSystem.getInfoAsync(targetPath);
+        if (info.exists && info.size && info.size > 0) {
+          localUri = targetPath;
+        } else {
+          const downloadResult = await FileSystem.downloadAsync(resolvedUrl, targetPath);
+          localUri = downloadResult.uri;
+        }
+      }
+
+      const isAvailable = await Sharing.isAvailableAsync().catch(() => false);
+      if (!isAvailable) {
+        Alert.alert('Sharing Unavailable', `Video saved locally at: ${localUri}`);
+        setIsExportingVideo(false);
+        return;
+      }
+
+      await Sharing.shareAsync(localUri, {
+        mimeType: 'video/mp4',
+        dialogTitle: 'Share Inspected Video (Annotated)',
+        UTI: 'public.movie',
+      });
+    } catch (err: any) {
+      console.error('Video export error:', err);
+      Alert.alert('Export Failed', err.message || 'Could not export or share video.');
+    } finally {
+      setIsExportingVideo(false);
+    }
+  };
+
+  const shareTextReport = async () => {
     if (!results) return;
     try {
       const reportText = `Inspectify Video Report\nStatus: ${results.defective_frames > 0 ? 'DEFECTIVE' : 'PASS'}\nDefective Frames: ${results.defective_frames} of ${results.total_processed_frames}\nSummary: ${results.summary || 'N/A'}`;
@@ -318,6 +382,25 @@ export default function LiveVideoScreen() {
     } catch {
       Alert.alert('Sharing Failed', 'Could not share report.');
     }
+  };
+
+  const shareReport = async () => {
+    if (!results) return;
+    Alert.alert(
+      'Share & Export',
+      'Choose what to export:',
+      [
+        {
+          text: '📹 Share Annotated Video (.mp4)',
+          onPress: exportAnnotatedVideo,
+        },
+        {
+          text: '📄 Share Text Report',
+          onPress: shareTextReport,
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   };
 
   const isDefective = liveResult?.status === 'DEFECTIVE';
@@ -700,13 +783,49 @@ export default function LiveVideoScreen() {
               {/* Video Player */}
               {results.annotated_video_url && (
                 <View style={[vs.card, { backgroundColor: cardBg, borderColor }]}>
-                  <Text style={[vs.sectionLabel, { color: textPrimary, marginBottom: 10 }]}>
-                    Reviewed Video
-                  </Text>
+                  <View style={vs.videoCardHeader}>
+                    <Text style={[vs.sectionLabel, { color: textPrimary, marginBottom: 0 }]}>
+                      Reviewed Video (with Bounding Boxes)
+                    </Text>
+                    <Pressable
+                      onPress={exportAnnotatedVideo}
+                      disabled={isExportingVideo}
+                      style={[vs.videoExportPill, { backgroundColor: pillBg, borderColor }]}
+                    >
+                      {isExportingVideo ? (
+                        <ActivityIndicator size="small" color={RED} />
+                      ) : (
+                        <>
+                          <Download size={14} color={RED} />
+                          <Text style={[vs.videoExportPillText, { color: RED }]}>Export</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  </View>
+
                   <VideoPlayerBox
                     uri={resolveMediaUrl(results.annotated_video_url)}
                     onPlayerReady={(p) => { annotatedPlayerRef.current = p; }}
                   />
+
+                  {/* Prominent Export / Share Video CTA */}
+                  <Pressable
+                    onPress={exportAnnotatedVideo}
+                    disabled={isExportingVideo}
+                    style={[vs.exportFullBtn, { backgroundColor: RED }]}
+                  >
+                    {isExportingVideo ? (
+                      <View style={vs.row}>
+                        <ActivityIndicator size="small" color={WHITE} />
+                        <Text style={vs.exportFullBtnText}>Preparing Video Export...</Text>
+                      </View>
+                    ) : (
+                      <View style={vs.row}>
+                        <Share2 size={16} color={WHITE} />
+                        <Text style={vs.exportFullBtnText}>Share / Save Video with Bounding Boxes</Text>
+                      </View>
+                    )}
+                  </Pressable>
                 </View>
               )}
 
@@ -878,4 +997,9 @@ const vs = StyleSheet.create({
   timelineChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   timelineChipTime: { fontSize: 13, fontWeight: '700' },
   videoContainer: { width: '100%', height: 220, backgroundColor: '#000000', borderRadius: 14, overflow: 'hidden', justifyContent: 'center', alignItems: 'center' },
+  videoCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  videoExportPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1 },
+  videoExportPillText: { fontSize: 12, fontWeight: '700' },
+  exportFullBtn: { marginTop: 12, paddingVertical: 13, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  exportFullBtnText: { color: WHITE, fontSize: 14, fontWeight: '700' },
 });
