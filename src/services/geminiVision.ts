@@ -6,7 +6,7 @@ const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY ||
   '';
 
-const VISION_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest'];
+const VISION_MODELS = ['gemini-flash-lite-latest', 'gemini-3.8-flash', 'gemini-flash-latest'];
 
 export interface VisionAnalysisResult {
   brand: string | null;
