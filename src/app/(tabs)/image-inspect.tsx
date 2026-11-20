@@ -453,17 +453,23 @@ export default function ImageInspectScreen() {
     setScrLoading(true);
 
     try {
+      const thresholds = await getConfidenceThresholds();
+      const selectedModel = await getSelectedModel();
+      const confidenceThreshold =
+        selectedModel === 'latest' ? thresholds.latest : thresholds.best;
+      const activeModelObj = AVAILABLE_MODELS.find((m) => m.id === selectedModel) || AVAILABLE_MODELS[0];
+
       let isDefect = false;
       let resultConfidence = 0.95;
       let initialReason = '';
       let annotatedImage: string | undefined = undefined;
-      let modelUsedName = 'Screen Scratch Model';
+      let modelUsedName = selectedModel === 'latest' ? 'Latest Defect Model' : 'Screen Scratch Model';
       let backendSuccess = false;
       let detectedBoxes: InspectionDefect[] = [];
 
       // 1. Attempt YOLO screen scratch/crack inspection via backend first
       try {
-        const uploadUrl = `${BACKEND_URL}/upload_screen_scratch/`;
+        const uploadUrl = `${BACKEND_URL}/upload_screen_scratch/?model=${selectedModel}&confidence_threshold=${confidenceThreshold}`;
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Backend timeout')), 3500)
         );
@@ -471,7 +477,10 @@ export default function ImageInspectScreen() {
           httpMethod: 'POST',
           uploadType: FileSystem.FileSystemUploadType.MULTIPART,
           fieldName: 'file',
-          parameters: { confidence_threshold: '0.10' },
+          parameters: {
+            confidence_threshold: String(confidenceThreshold),
+            model: selectedModel,
+          },
           headers: { Accept: 'application/json' },
         });
 
