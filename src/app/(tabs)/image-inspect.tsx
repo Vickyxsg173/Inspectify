@@ -278,16 +278,20 @@ export default function ImageInspectScreen() {
       let backendSuccess = false;
       let detectedBoxes: InspectionDefect[] = [];
 
-      // 1. Attempt YOLO inspection via backend first (with 6.0s timeout for reliable Wi-Fi uploads)
+      // 1. Attempt YOLO inspection via backend first
       try {
         const uploadUrl = `${BACKEND_URL}/upload/?model=${selectedModel}&confidence_threshold=${confidenceThreshold}`;
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Backend timeout')), 6000)
+          setTimeout(() => reject(new Error('Backend timeout')), 3500)
         );
         const uploadPromise = FileSystem.uploadAsync(uploadUrl, pkgImage, {
           httpMethod: 'POST',
           uploadType: FileSystem.FileSystemUploadType.MULTIPART,
           fieldName: 'file',
+          parameters: {
+            confidence_threshold: String(confidenceThreshold),
+            model: selectedModel,
+          },
           headers: { Accept: 'application/json' },
         });
 
@@ -300,7 +304,7 @@ export default function ImageInspectScreen() {
           initialReason =
             resultData.reason ||
             (isDefect
-              ? 'Damage detected on packaging surface. Generating detailed AI summary...'
+              ? 'Damage detected on packaging surface.'
               : 'Packaging verified intact without defects.');
           annotatedImage = resultData.annotated_image;
           if (Array.isArray(resultData.defects) && resultData.defects.length > 0) {
@@ -320,7 +324,7 @@ export default function ImageInspectScreen() {
         initialReason =
           visionQC.reason ||
           (isDefect
-            ? 'Surface damage detected on package. Generating detailed AI summary...'
+            ? 'Surface damage detected on package.'
             : 'Packaging verified intact with uniform structural integrity.');
         modelUsedName = 'AI Vision Inspector';
         if (Array.isArray(visionQC.defects) && visionQC.defects.length > 0) {
@@ -383,7 +387,7 @@ export default function ImageInspectScreen() {
         reason: initialReason,
         modelUsed: modelUsedName,
         defects: detectedBoxes,
-        isSummaryLoading: true,
+        isSummaryLoading: false,
         screenPrediction,
       });
       setPkgLoading(false);
@@ -457,11 +461,11 @@ export default function ImageInspectScreen() {
       let backendSuccess = false;
       let detectedBoxes: InspectionDefect[] = [];
 
-      // 1. Attempt YOLO screen scratch/crack inspection via backend first (6.0s timeout)
+      // 1. Attempt YOLO screen scratch/crack inspection via backend first
       try {
         const uploadUrl = `${BACKEND_URL}/upload_screen_scratch/`;
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Backend timeout')), 6000)
+          setTimeout(() => reject(new Error('Backend timeout')), 3500)
         );
         const uploadPromise = FileSystem.uploadAsync(uploadUrl, scrImage, {
           httpMethod: 'POST',
@@ -480,7 +484,7 @@ export default function ImageInspectScreen() {
           initialReason =
             resultData.reason ||
             (isDefect
-              ? 'Screen defect (scratch or crack) detected on display panel. Generating detailed AI summary...'
+              ? 'Screen defect (scratch or crack) detected on display panel.'
               : 'Screen surface verified smooth and intact.');
           annotatedImage = resultData.annotated_image;
           if (Array.isArray(resultData.defects) && resultData.defects.length > 0) {
@@ -500,7 +504,7 @@ export default function ImageInspectScreen() {
         initialReason =
           visionScreenQC.reason ||
           (isDefect
-            ? 'Display surface crack or fracture detected. Generating detailed AI summary...'
+            ? 'Display surface crack or fracture detected.'
             : 'Screen glass verified pristine and scratch-free.');
         modelUsedName = 'AI Screen Glass Inspector';
         if (Array.isArray(visionScreenQC.defects) && visionScreenQC.defects.length > 0) {
@@ -528,7 +532,7 @@ export default function ImageInspectScreen() {
         reason: initialReason,
         modelUsed: modelUsedName,
         defects: detectedBoxes,
-        isSummaryLoading: true,
+        isSummaryLoading: false,
       });
       setScrLoading(false);
 
