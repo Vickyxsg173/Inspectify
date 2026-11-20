@@ -282,7 +282,7 @@ export default function ImageInspectScreen() {
       try {
         const uploadUrl = `${BACKEND_URL}/upload/?model=${selectedModel}&confidence_threshold=${confidenceThreshold}`;
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Backend timeout')), 3500)
+          setTimeout(() => reject(new Error('Backend timeout')), 8000)
         );
         const uploadPromise = FileSystem.uploadAsync(uploadUrl, pkgImage, {
           httpMethod: 'POST',
@@ -471,7 +471,7 @@ export default function ImageInspectScreen() {
       try {
         const uploadUrl = `${BACKEND_URL}/upload_screen_scratch/?confidence_threshold=${confidenceThreshold}`;
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Backend timeout')), 3500)
+          setTimeout(() => reject(new Error('Backend timeout')), 8000)
         );
         const uploadPromise = FileSystem.uploadAsync(uploadUrl, scrImage, {
           httpMethod: 'POST',

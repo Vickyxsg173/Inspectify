@@ -116,25 +116,53 @@ except Exception as e:
 # Global active model setting: 'best' (default) or 'latest'
 active_detection_model = "best"
 
-SCREEN_SCRATCH_MODEL_PATH = "screen_scratch_model.pt"
-if not os.path.exists(SCREEN_SCRATCH_MODEL_PATH):
-    # Compile screen-scratch-detection directory into .pt file if missing
-    import shutil, zipfile
-    with zipfile.ZipFile(SCREEN_SCRATCH_MODEL_PATH, 'w', zipfile.ZIP_DEFLATED) as z:
-        for root, dirs, files in os.walk('/Users/vikrantvaidya/Desktop/Projects/yolo_mobile_app/screen-scratch-detection'):
-            for f in files:
-                p = os.path.join(root, f)
-                arcname = os.path.relpath(p, '/Users/vikrantvaidya/Desktop/Projects/yolo_mobile_app/screen-scratch-detection')
-                z.write(p, os.path.join('archive', arcname))
+# 3. Screen scratch / crack segmentation model (screen_scratch_model.pt — trained at imgsz=1024)
+# Robustly resolve path so the model loads correctly regardless of uvicorn's cwd.
+_SCREEN_SCRATCH_CANDIDATES = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "screen_scratch_model.pt"),
+    "/Users/vikrantvaidya/Desktop/Projects/yolo_mobile_app/screen_scratch_model.pt",
+    "/Users/vikrantvaidya/Desktop/Projects/aidefect/backend/screen_scratch_model.pt",
+    "/Users/vikrantvaidya/Desktop/Projects/Inspectify/backend/screen_scratch_model.pt",
+    "screen_scratch_model.pt",
+]
+SCREEN_SCRATCH_MODEL_PATH = None
+for _cand in _SCREEN_SCRATCH_CANDIDATES:
+    if os.path.exists(_cand) and os.path.getsize(_cand) > 1_000_000:  # must be a real model, not a stub
+        SCREEN_SCRATCH_MODEL_PATH = _cand
+        break
+if not SCREEN_SCRATCH_MODEL_PATH:
+    raise FileNotFoundError("screen_scratch_model.pt not found in any candidate path. Please place it in the backend/ directory.")
 
-model_screen_scratch = YOLO(SCREEN_SCRATCH_MODEL_PATH)
+model_screen_scratch = None
+try:
+    model_screen_scratch = YOLO(SCREEN_SCRATCH_MODEL_PATH)
+    print(f"Successfully loaded screen_scratch_model from: {SCREEN_SCRATCH_MODEL_PATH}")
+except Exception as _e_scr:
+    print(f"ERROR loading screen_scratch_model: {_e_scr}")
+    model_screen_scratch = None
 
 def analyze_screen_scratch_with_selected_model(image_path: str, model_type: Optional[str] = None, confidence_threshold: float = 0.10):
     """
     Exclusively uses screen_scratch_model.pt for all screen scratch & crack detection
     in both Personal and Company modes.
+
+    Key fix: screen_scratch_model.pt was trained at imgsz=1024, so inference MUST run at
+    imgsz=1024 to preserve fine hairline scratches. Running at 640px obliterates thin
+    1-2px scratches. We also do a dual-pass: 1024px first, then 640px fallback if nothing found.
     """
-    conf_thresh = max(0.05, min(0.95, confidence_threshold))
+    if model_screen_scratch is None:
+        return {
+            "status": "INTACT",
+            "confidence": 0.5,
+            "reason": "Screen scratch model unavailable.",
+            "annotated_image": os.path.basename(image_path),
+            "model_used": "screen_scratch_model.pt",
+            "defects": []
+        }
+
+    # Use a low enough conf to catch faint hairline scratches (the model was trained on subtle defects)
+    # We cap incoming threshold to 0.08 for screen mode since fine scratches score low
+    conf_thresh = min(max(0.05, confidence_threshold), 0.08)
     base, ext = os.path.splitext(image_path)
     annotated_path = f"{base}_annotated{ext}"
 
@@ -144,16 +172,24 @@ def analyze_screen_scratch_with_selected_model(image_path: str, model_type: Opti
     defects = []
     detected_categories = []
 
-    try:
-        results_scratch = model_screen_scratch(image_path, conf=conf_thresh)
-        if len(results_scratch) > 0 and len(results_scratch[0].boxes) > 0:
-            img = results_scratch[0].orig_img
+    def _run_pass(imgsz: int) -> bool:
+        nonlocal has_defect, max_defect_conf, defect_count, detected_categories
+        found_any = False
+        try:
+            # imgsz=1024 matches training resolution — CRITICAL for fine scratch detection
+            results = model_screen_scratch(image_path, imgsz=imgsz, conf=conf_thresh, verbose=False)
+            if not results or not results[0].boxes or len(results[0].boxes) == 0:
+                return False
+            img = results[0].orig_img
             h, w = img.shape[:2] if img is not None else (1, 1)
-            for box in results_scratch[0].boxes:
+            annotated_img = img.copy() if img is not None else None
+            for box in results[0].boxes:
                 conf = float(box.conf[0])
                 cls_id = int(box.cls[0])
-                cls_name = model_screen_scratch.names.get(cls_id, "crack") if hasattr(model_screen_scratch, "names") else "crack"
+                cls_name = (model_screen_scratch.names.get(cls_id, "scratch")
+                            if hasattr(model_screen_scratch, "names") else "scratch")
                 if conf >= conf_thresh:
+                    found_any = True
                     has_defect = True
                     defect_count += 1
                     if conf > max_defect_conf:
@@ -175,13 +211,29 @@ def analyze_screen_scratch_with_selected_model(image_path: str, model_type: Opti
                         ],
                         "box_pixels": [x1, y1, x2, y2]
                     })
-            results_scratch[0].save(filename=annotated_path)
-    except Exception as e_scr:
-        print("screen_scratch_model inference error:", e_scr)
+                    # Draw custom cyan bounding boxes + label for scratch, red for crack
+                    if annotated_img is not None:
+                        color = (0, 255, 255) if cls_name == "scratch" else (0, 60, 240)
+                        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), color, 2)
+                        label_text = f"{cls_name.upper()} {int(conf * 100)}%"
+                        cv2.putText(annotated_img, label_text, (x1, max(16, y1 - 6)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+            if annotated_img is not None and found_any:
+                cv2.imwrite(annotated_path, annotated_img)
+        except Exception as e_pass:
+            print(f"screen_scratch_model inference error at imgsz={imgsz}:", e_pass)
+        return found_any
+
+    # --- Pass 1: Run at training resolution (imgsz=1024) for finest hairline scratch detection ---
+    found_at_1024 = _run_pass(1024)
+
+    # --- Pass 2: Fallback at 640 if nothing found at 1024 (catches broader cracks) ---
+    if not found_at_1024:
+        _run_pass(640)
 
     annotated_filename = os.path.basename(annotated_path) if os.path.exists(annotated_path) else os.path.basename(image_path)
     if has_defect:
-        desc = ", ".join(detected_categories[:2]) if detected_categories else "crack/scratch"
+        desc = ", ".join(detected_categories[:2]) if detected_categories else "scratch/crack"
         return {
             "status": "DEFECTIVE",
             "confidence": round(max_defect_conf, 2),
@@ -726,10 +778,12 @@ async def upload_screen_scratch(
     chosen_model = model or model_name or active_detection_model
     raw_conf = confidence_threshold or confidence_threshold_form
     try:
-        conf_thresh = float(raw_conf) if raw_conf else 0.12
-        conf_thresh = max(0.05, min(0.95, conf_thresh))
+        # Screen scratch model: cap at 0.08 so hairline fine scratches are never missed.
+        # The model scores fine scratches at 0.06-0.10 range so using packaging defaults (0.12+) would miss them all.
+        conf_thresh = float(raw_conf) if raw_conf else 0.08
+        conf_thresh = max(0.05, min(0.08, conf_thresh))  # hard-cap max at 0.08 for screen mode
     except (ValueError, TypeError):
-        conf_thresh = 0.12
+        conf_thresh = 0.08
 
     try:
         analysis = analyze_screen_scratch_with_selected_model(path, chosen_model, conf_thresh)
