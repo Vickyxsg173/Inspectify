@@ -330,38 +330,53 @@ def analyze_image_with_yolo(image_path: str, confidence_threshold: float = 0.05)
     """
     Primary standard model inference with best.pt (Packaging defect detection).
     
-    Calibration notes:
-    - best.pt was trained natively at imgsz=640 on damaged (cls 0) vs intact (cls 1).
-    - Damaged box defects (creases, tears, corner crushes, punctures) have raw activation confidences
-      typically ranging between 0.05 and 0.10. Setting the threshold to 0.12 causes 100% of real defects
-      to be silently dropped as false negatives (reporting 'INTACT').
-    - Calibrated optimum threshold is 0.05 (5%).
-    - Always runs native imgsz=640 first, with internal NMS threshold conf=min(0.03, conf_val) so candidate
-      damaged boxes are preserved, followed by TTA augment=True fallback if needed.
+    Architecture:
+    - Stage 1: Native imgsz=640 resolution first (matching its training dimensions).
+    - Stage 2: If no defect is found at 640, triggers test-time augmentation (TTA) at 640.
+    - Stage 3: If still no defect is found, triggers imgsz=1024 fallback for micro-tears and fine paper fractures.
+    - Stage 4: Test-time augmentation (TTA) at imgsz=1024 if needed.
     """
     try:
         conf_val = max(0.02, min(0.95, confidence_threshold))
         raw_img = cv2.imread(image_path)
         img = raw_img if raw_img is not None else None
 
-        # 1. Primary pass: native imgsz=640 with low internal NMS threshold
-        internal_conf = min(0.03, conf_val)
+        effective_thresh = min(conf_val, 0.05)
+        internal_conf = min(0.03, effective_thresh)
+
+        # Helper to check for damaged boxes (cls 0)
+        def _get_damaged_boxes(res_obj):
+            if not res_obj or len(res_obj) == 0 or not res_obj[0].boxes:
+                return []
+            return [b for b in res_obj[0].boxes if int(b.cls[0]) == 0 and float(b.conf[0]) >= effective_thresh]
+
+        # 1. Native 640px Resolution First (matching training dimensions)
         results = model_yolo(image_path, imgsz=640, conf=internal_conf, verbose=False)
-        detections = results[0].boxes if results and len(results) > 0 else []
+        damaged_boxes = _get_damaged_boxes(results)
 
-        # 2. If no boxes detected at standard 640, attempt test-time augmentation (TTA)
-        if len(detections) == 0:
+        # 2. If no defect is found at 640, trigger Test-Time Augmentation (TTA) at 640
+        if len(damaged_boxes) == 0:
             results_aug = model_yolo(image_path, imgsz=640, augment=True, conf=internal_conf, verbose=False)
-            if results_aug and len(results_aug) > 0 and len(results_aug[0].boxes) > 0:
+            damaged_boxes_aug = _get_damaged_boxes(results_aug)
+            if len(damaged_boxes_aug) > 0:
                 results = results_aug
-                detections = results[0].boxes
+                damaged_boxes = damaged_boxes_aug
 
-        # 3. If still nothing, try at imgsz=1024 for micro tears/creases
-        if len(detections) == 0:
-            results_lg = model_yolo(image_path, imgsz=1024, conf=internal_conf, verbose=False)
-            if results_lg and len(results_lg) > 0 and len(results_lg[0].boxes) > 0:
-                results = results_lg
-                detections = results[0].boxes
+        # 3. If still no defect is found, trigger imgsz=1024 fallback for micro-tears
+        if len(damaged_boxes) == 0:
+            results_1024 = model_yolo(image_path, imgsz=1024, conf=internal_conf, verbose=False)
+            damaged_boxes_1024 = _get_damaged_boxes(results_1024)
+            if len(damaged_boxes_1024) > 0:
+                results = results_1024
+                damaged_boxes = damaged_boxes_1024
+
+        # 4. If still no defect, final TTA pass at imgsz=1024
+        if len(damaged_boxes) == 0:
+            results_1024_aug = model_yolo(image_path, imgsz=1024, augment=True, conf=internal_conf, verbose=False)
+            damaged_boxes_1024_aug = _get_damaged_boxes(results_1024_aug)
+            if len(damaged_boxes_1024_aug) > 0:
+                results = results_1024_aug
+                damaged_boxes = damaged_boxes_1024_aug
 
         if img is None and results and len(results) > 0 and results[0].orig_img is not None:
             img = results[0].orig_img.copy()
@@ -377,54 +392,49 @@ def analyze_image_with_yolo(image_path: str, confidence_threshold: float = 0.05)
 
         annotated_img = img.copy() if img is not None else None
 
-        if len(detections) > 0:
-            for i, box in enumerate(detections):
-                cls_id = int(box.cls[0])
+        if len(damaged_boxes) > 0:
+            has_defect = True
+            for i, box in enumerate(damaged_boxes):
                 conf = float(box.conf[0])
-                # In best.pt: cls 0 is 'damaged', cls 1 is 'intact'
-                # Flag as defect if cls 0 and conf >= conf_val (or >= 0.05 fallback if user set high slider)
-                effective_thresh = min(conf_val, 0.06)
-                if cls_id == 0 and conf >= effective_thresh:
-                    has_defect = True
-                    defect_count += 1
-                    if conf > max_defect_conf:
-                        max_defect_conf = conf
+                defect_count += 1
+                if conf > max_defect_conf:
+                    max_defect_conf = conf
 
-                    xyxy = box.xyxy[0].cpu().numpy().astype(int)
-                    x1, y1 = max(0, int(xyxy[0])), max(0, int(xyxy[1]))
-                    x2, y2 = min(w, int(xyxy[2])), min(h, int(xyxy[3]))
+                xyxy = box.xyxy[0].cpu().numpy().astype(int)
+                x1, y1 = max(0, int(xyxy[0])), max(0, int(xyxy[1]))
+                x2, y2 = min(w, int(xyxy[2])), min(h, int(xyxy[3]))
 
-                    defects.append({
-                        "id": f"pkg_{i}",
-                        "label": "DAMAGED",
-                        "category": "Packaging Damage",
-                        "confidence": round(conf, 2),
-                        "box_normalized": [
-                            round(x1 / w, 4),
-                            round(y1 / h, 4),
-                            round(x2 / w, 4),
-                            round(y2 / h, 4),
-                        ],
-                        "box_pixels": [x1, y1, x2, y2]
-                    })
+                defects.append({
+                    "id": f"pkg_{i}",
+                    "label": "DAMAGED",
+                    "category": "Packaging Damage",
+                    "confidence": round(conf, 2),
+                    "box_normalized": [
+                        round(x1 / w, 4),
+                        round(y1 / h, 4),
+                        round(x2 / w, 4),
+                        round(y2 / h, 4),
+                    ],
+                    "box_pixels": [x1, y1, x2, y2]
+                })
 
-                    # Draw prominent red defect bounding box with corner brackets + label badge
-                    if annotated_img is not None:
-                        # Box border
-                        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 240), 3)
-                        # Corner brackets
-                        corner_len = max(12, min(32, int(min(x2 - x1, y2 - y1) * 0.22)))
-                        for (cx, cy, dx, dy) in [(x1, y1, 1, 1), (x2, y1, -1, 1), (x1, y2, 1, -1), (x2, y2, -1, -1)]:
-                            cv2.line(annotated_img, (cx, cy), (cx + dx * corner_len, cy), (0, 0, 255), 5)
-                            cv2.line(annotated_img, (cx, cy), (cx, cy + dy * corner_len), (0, 0, 255), 5)
-                        # Badge
-                        badge_text = f"DAMAGED {int(conf * 100)}%"
-                        (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
-                        badge_y1 = max(0, y1 - 28)
-                        cv2.rectangle(annotated_img, (x1, badge_y1), (x1 + tw + 14, y1), (0, 0, 210), -1)
-                        cv2.rectangle(annotated_img, (x1, badge_y1), (x1 + tw + 14, y1), (80, 80, 255), 1)
-                        cv2.putText(annotated_img, badge_text, (x1 + 7, max(20, y1 - 7)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
+                # Draw prominent red defect bounding box with corner brackets + label badge
+                if annotated_img is not None:
+                    # Box border
+                    cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 0, 240), 3)
+                    # Corner brackets
+                    corner_len = max(12, min(32, int(min(x2 - x1, y2 - y1) * 0.22)))
+                    for (cx, cy, dx, dy) in [(x1, y1, 1, 1), (x2, y1, -1, 1), (x1, y2, 1, -1), (x2, y2, -1, -1)]:
+                        cv2.line(annotated_img, (cx, cy), (cx + dx * corner_len, cy), (0, 0, 255), 5)
+                        cv2.line(annotated_img, (cx, cy), (cx, cy + dy * corner_len), (0, 0, 255), 5)
+                    # Badge
+                    badge_text = f"DAMAGED {int(conf * 100)}%"
+                    (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+                    badge_y1 = max(0, y1 - 28)
+                    cv2.rectangle(annotated_img, (x1, badge_y1), (x1 + tw + 14, y1), (0, 0, 210), -1)
+                    cv2.rectangle(annotated_img, (x1, badge_y1), (x1 + tw + 14, y1), (80, 80, 255), 1)
+                    cv2.putText(annotated_img, badge_text, (x1 + 7, max(20, y1 - 7)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
 
         if annotated_img is not None:
             cv2.imwrite(annotated_path, annotated_img)
@@ -608,7 +618,7 @@ def analyze_image_with_llm(image_path: str):
         if vision_hit:
             return vision_hit
 
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-3.8-flash")
 
         enhanced_path = preprocess_for_micro_defects(image_path)
 
@@ -976,7 +986,7 @@ async def extract_brand(req: BrandExtractRequest):
 
     # 2. Try Gemini API fallback
     try:
-        model_gemini = genai.GenerativeModel('gemini-1.5-flash')
+        model_gemini = genai.GenerativeModel('gemini-3.8-flash')
         with open(image_path, "rb") as img_file:
             img_bytes = img_file.read()
         res = model_gemini.generate_content([
