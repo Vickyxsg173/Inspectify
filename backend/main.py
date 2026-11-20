@@ -274,25 +274,25 @@ def split_into_tiles(image_path, rows=3, cols=3):
 
     return tiles
 
-def analyze_image_with_yolo(image_path: str, confidence_threshold: float = 0.05):
+def analyze_image_with_yolo(image_path: str, confidence_threshold: float = 0.12):
     try:
-        conf_val = max(0.02, min(0.95, confidence_threshold))
+        conf_val = max(0.04, min(0.95, confidence_threshold))
         
-        # Run YOLO with imgsz=1024 for high-resolution defect capture (crushed corners, creases, small tears)
-        # Using conf=min(0.04, conf_val) ensures YOLO internal NMS retains candidate defect boxes
-        internal_conf = min(0.04, conf_val)
-        results = model_yolo(image_path, imgsz=1024, conf=internal_conf, verbose=False)
-        
+        # Native trained resolution for best.pt is imgsz=640 (preserves maximum defect activation)
+        results = model_yolo(image_path, imgsz=640, conf=conf_val, verbose=False)
         detections = results[0].boxes
+        
+        # If no boxes detected at standard 640, attempt test-time augmentation (TTA)
+        if len(detections) == 0:
+            results_aug = model_yolo(image_path, imgsz=640, augment=True, conf=conf_val, verbose=False)
+            if len(results_aug[0].boxes) > 0:
+                results = results_aug
+                detections = results[0].boxes
+        
         img = cv2.imread(image_path)
         if img is None and results[0].orig_img is not None:
             img = results[0].orig_img.copy()
         h, w = img.shape[:2] if img is not None else (1, 1)
-        
-        # If no boxes at 1024, fallback to standard 640
-        if len(detections) == 0:
-            results_640 = model_yolo(image_path, imgsz=640, conf=internal_conf, verbose=False)
-            detections = results_640[0].boxes
         
         base, ext = os.path.splitext(image_path)
         annotated_path = f"{base}_annotated{ext}"
@@ -470,14 +470,14 @@ def analyze_image_with_latest_model(image_path: str, confidence_threshold: float
         res["fallback_reason"] = f"latest model error: {str(e)}"
         return res
 
-def analyze_image_with_selected_model(image_path: str, model_type: Optional[str] = None, confidence_threshold: float = 0.05):
+def analyze_image_with_selected_model(image_path: str, model_type: Optional[str] = None, confidence_threshold: float = 0.12):
     """
     Strict single-model execution matching user's Settings selection.
     If 'latest' is selected: uses exclusively latest_model_defect.pt.
     If 'best' (standard) is selected: uses exclusively best.pt.
     """
     choice = (model_type or active_detection_model or "best").lower().strip()
-    conf_thresh = max(0.02, min(0.95, confidence_threshold))
+    conf_thresh = max(0.04, min(0.95, confidence_threshold))
 
     # User selected Latest Defect Model: use ONLY latest_model_defect.pt
     if choice in ("latest", "latest_model", "latest_model_defect", "latest_model_defect.pt"):
@@ -679,13 +679,13 @@ async def upload(
 
     chosen_model = model or model_name or active_detection_model
 
-    # Parse confidence threshold from query or form; default to 0.05 for best.pt, 0.20 for latest
+    # Parse confidence threshold from query or form; default to 0.12 for best.pt, 0.25 for latest
     raw_conf = confidence_threshold or confidence_threshold_form
     try:
-        conf_thresh = float(raw_conf) if raw_conf else (0.20 if chosen_model == "latest" else 0.05)
-        conf_thresh = max(0.02, min(0.95, conf_thresh))  # clamp to safe range
+        conf_thresh = float(raw_conf) if raw_conf else (0.25 if chosen_model == "latest" else 0.12)
+        conf_thresh = max(0.04, min(0.95, conf_thresh))  # clamp to safe range
     except (ValueError, TypeError):
-        conf_thresh = 0.05 if chosen_model == "best" else 0.20
+        conf_thresh = 0.12 if chosen_model == "best" else 0.25
 
     try:
         analysis = analyze_image_with_selected_model(path, chosen_model, conf_thresh)
