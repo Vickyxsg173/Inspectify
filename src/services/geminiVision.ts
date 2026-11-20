@@ -197,15 +197,12 @@ export async function generatePackagingDefectSummary(
       throw new Error('Failed to read image as base64');
     }
 
-    const promptText = `You are a certified industrial packaging quality control inspector.
-Carefully inspect this packaging box/product image. The YOLO vision detection model classified this package as: ${status.toUpperCase()} with ${confidencePercent}% confidence.
-
-Write a complete, professional, 3-sentence AI Inspection Summary explaining:
-1. Physical Condition: Specifically describe any physical damage, denting, punctures, seam tears, crushed corners, tape issues, or surface deformities observed on the packaging (or describe the pristine intact condition if intact).
-2. Content Assessment: State whether the package structural integrity adequately protects the internal contents.
-3. Quality Action: State the recommended quality action (e.g., approved for transit/delivery, quarantine for secondary inspection, or reject for repackaging).
-
-Do not use bullet points or markdown headers. Provide complete, fluent, polished sentences. Every sentence must be fully completed with proper punctuation.`;
+    const promptText = `You are an expert industrial packaging quality control inspector examining this real-world photo.
+Analyze the packaging or product in this specific image in high detail.
+In 2 to 3 concise, highly descriptive sentences:
+1. Identify what item/package is shown and describe the exact visible physical damage, dents, tears, punctures, or pristine intact condition seen in this photo.
+2. Provide an assessment of whether the internal contents are protected and a final QC recommendation.
+Do not use headers, asterisks, bullet points, or markdown formatting. Provide fluent, natural sentences ending with proper punctuation.`;
 
     for (const model of VISION_MODELS) {
       try {
@@ -231,7 +228,7 @@ Do not use bullet points or markdown headers. Provide complete, fluent, polished
         };
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -286,14 +283,11 @@ export async function generateScreenDefectSummary(
       throw new Error('Failed to read image as base64');
     }
 
-    const promptText = `You are an expert mobile device display quality inspector.
-Inspect this smartphone screen image. The defect model classified this screen as: ${status.toUpperCase()} with ${confidencePercent}% confidence.
-
-Write a complete, professional, 2-3 sentence AI inspection summary describing:
-1. Screen Surface Condition: Specifically describe any glass hairline scratches, cracks, edge chips, display defects, or pristine smooth glass condition visible.
-2. Diagnostic Verdict: Provide a clear diagnostic assessment and recommendation (e.g., approved in excellent condition, screen protector recommended, or panel replacement advised).
-
-Do not use bullet points or markdown headers. Provide complete, fluent sentences ending with proper punctuation.`;
+    const promptText = `You are an expert mobile display glass quality control inspector examining this real-world device screen image.
+In 2 to 3 concise, highly descriptive sentences:
+1. Describe the specific visible condition of the display glass (any fracture lines, cracks, scratches, chips, or clean smooth surface).
+2. Provide a practical technical diagnosis and action recommendation (e.g., panel replacement, protective film, or certified optimal).
+Do not use headers, asterisks, bullet points, or markdown formatting. Provide fluent, natural sentences ending with proper punctuation.`;
 
     for (const model of VISION_MODELS) {
       try {
@@ -319,7 +313,7 @@ Do not use bullet points or markdown headers. Provide complete, fluent sentences
         };
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

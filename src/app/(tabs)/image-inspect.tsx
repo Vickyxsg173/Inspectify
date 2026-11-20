@@ -384,10 +384,10 @@ export default function ImageInspectScreen() {
         status: isDefect ? 'Defective' : 'Intact',
         confidence: resultConfidence,
         annotatedImage,
-        reason: initialReason,
+        reason: initialReason || (isDefect ? 'Analyzing physical packaging damage with Gemini Vision AI...' : 'Analyzing packaging structural integrity with Gemini Vision AI...'),
         modelUsed: modelUsedName,
         defects: detectedBoxes,
-        isSummaryLoading: false,
+        isSummaryLoading: true,
         screenPrediction,
       });
       setPkgLoading(false);
@@ -538,10 +538,10 @@ export default function ImageInspectScreen() {
         status: isDefect ? 'Defective' : 'Intact',
         confidence: resultConfidence,
         annotatedImage,
-        reason: initialReason,
+        reason: initialReason || (isDefect ? 'Analyzing display glass fractures and cracks with Gemini Vision AI...' : 'Analyzing screen glass surface with Gemini Vision AI...'),
         modelUsed: modelUsedName,
         defects: detectedBoxes,
-        isSummaryLoading: false,
+        isSummaryLoading: true,
       });
       setScrLoading(false);
 
